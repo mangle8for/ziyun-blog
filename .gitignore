@@ -1,0 +1,94 @@
+# ============================================================
+# 紫云博客 · 根级 .gitignore（mono-repo 统一管理前后端）
+#
+# 设计说明：
+#  - 本文件同时覆盖 blog-server（Java/Spring Boot）与
+#    blog-web（Vue3/Vite）两个子项目，避免各放一份重复规则。
+#  - 规则按「构建产物 / 编辑器 / 日志 / 环境文件 / 系统文件」
+#    分组，方便对照学习。
+#  - 注意：.gitignore 只影响「未跟踪文件」，已提交进仓库的文件
+#    即使命中规则也不会被忽略（如需移除需 git rm --cached）。
+# ============================================================
+
+# ---------- Java / Maven（blog-server） ----------
+# Maven 构建产物：每次 mvn package 重新生成，绝不入库
+target/
+# Maven Wrapper 运行时下载的 jar（wrapper 脚本本身 mvnw/mvnw.cmd 保留）
+.mvn/wrapper/maven-wrapper.jar
+# 排除规则：保证 src 下的 target 意外出现时不被误伤
+!**/src/main/**/target/
+!**/src/test/**/target/
+
+# ---------- Node / Vite（blog-web） ----------
+# 依赖目录：npm install 全量重建，体积巨大且平台相关
+node_modules/
+# Vite 构建产物
+dist/
+dist-ssr/
+# 类型检查增量缓存（vue-tsc --build 生成）
+*.tsbuildinfo
+# ESLint 缓存
+.eslintcache
+# Vite 开发依赖预构建的临时文件（内容以 hash 命名）
+*.timestamp-*-*.mjs
+
+# ---------- 测试产物 ----------
+coverage/
+__screenshots__/
+/cypress/videos/
+/cypress/screenshots/
+
+# ---------- 日志 ----------
+# 后端日志目录（logback 默认输出）与各类前端调试日志
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ---------- IDE / 编辑器 ----------
+# IntelliJ IDEA
+.idea/
+*.iws
+*.iml
+*.ipr
+# VS Code（保留 extensions.json 以便协作同步推荐插件）
+.vscode/*
+!.vscode/extensions.json
+# Eclipse / STS
+.apt_generated
+.classpath
+.factorypath
+.project
+.settings
+.springBeans
+.sts4-cache
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+build/
+!**/src/main/**/build/
+!**/src/test/**/build/
+# 其他编辑器
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# ---------- 环境与配置文件（绝不入库） ----------
+# 本地环境变量覆盖文件（dev 用 .env.development.local 可覆盖公共配置）
+*.local
+# 后端运行时产物/个人配置
+*.pid
+*.seed
+*.pid.lock
+
+# ---------- 系统文件 ----------
+.DS_Store
+Thumbs.db
