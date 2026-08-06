@@ -1,7 +1,99 @@
+# ============================================================
+# 紫云博客 · 公共配置（所有环境共享）
+# ============================================================
+# 设计说明（Spring 配置分层机制）：
+#   application.yml        公共配置，各环境必读
+#   application-dev.yml    开发环境覆盖项（dev 通过 spring.profiles.active 激活）
+#   application-prod.yml   生产环境覆盖项
+#   同名 key 下，环境专属文件「覆盖」公共文件 —— 类似 CSS 层叠，
+#   公共文件放基线值，环境文件只写差异，避免每个环境复制一大份配置。
+# ============================================================
 spring:
   application:
     name: blog-server
+
+  # 默认激活 dev 环境（可用 --spring.profiles.active=prod 命令行覆盖）
+  profiles:
+    active: dev
+
+  # ---------- 数据源（MySQL 8） ----------
+  # 设计说明（连接串参数）：
+  #  - serverTimezone=Asia/Shanghai：MySQL 8 驱动强制要求显式时区，否则启动报错
+  #  - useSSL=false：本地开发无证书加密，开启会告警
+  #  - allowPublicKeyRetrieval=true：MySQL 8 默认 caching_sha2_password 认证
+  #    首次握手需要公钥交换，不开会报 Public Key Retrieval is not allowed
+  #  - 密码不写死：${DB_PASSWORD:root} 语法 = 读环境变量 DB_PASSWORD，
+  #    未设置时回退默认值 root（开发机省事，生产必须显式设置）
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://localhost:3306/ziyun_blog?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true
+    username: root
+    password: ${DB_PASSWORD:root}
+    hikari:
+      # HikariCP 连接池上限：博客并发不高，10 个够用
+      maximum-pool-size: 10
+      # 连接 5 秒拿不到就直接失败（fail-fast），便于本地快速发现 MySQL 没起
+      connection-timeout: 5000
+
+  # ---------- Redis（P2 起使用，先占位保证启动不报错） ----------
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      database: 0
+
+  # 序列化方式统一为 UTF-8 JSON，避免中文乱码
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+
 server:
   port: 8080
+  # 优雅停机：接收到关闭信号后先拒绝新请求、处理完存量请求再退出
+  shutdown: graceful
 
+# ============================================================
+# MyBatis-Plus 全局配置
+# ============================================================
+mybatis-plus:
+  # Mapper 接口的 XML 文件位置（P1 起若有手写 SQL 放 src/main/resources/mapper/）
+  mapper-locations: classpath*:mapper/**/*.xml
+  # 实体类的包路径：XML 中可用简单类名代替全限定名
+  type-aliases-package: fun.ziyun.blogserver.entity
+  configuration:
+    # 数据库下划线列名 <-> Java 驼峰属性 自动映射（article_id <-> articleId）
+    map-underscore-to-camel-case: true
+    # 打印 SQL 的日志实现：dev 环境覆盖为 StdOutImpl，公共处留空避免生产泄漏 SQL
+  global-config:
+    banner: false
+    db-config:
+      # 主键策略：雪花 ID（19 位 Long）。
+      # 对比原生 MyBatis 自增：自增 ID 易被遍历抓取（如文章 ID 越爬越多），
+      # 雪花 ID 全局唯一、无规律，且天然适合分布式分表（P1 详述与 JS 精度问题）。
+      id-type: assign_id
+      # 逻辑删除：所有表统一 deleted 字段，1=已删 0=未删。
+      # MP 会自动给所有 SQL 追加 "AND deleted = 0"，查询层面直接滤掉已删数据。
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
 
+# ============================================================
+# 业务自定义配置（以 blog 为前缀的自定义命名空间）
+# ============================================================
+blog:
+  jwt:
+    # 签名密钥：生产环境必须通过环境变量 JWT_SECRET 注入（>= 32 字节）
+    secret: ${JWT_SECRET:ziyun-blog-dev-secret-key-please-change-in-prod}
+    # token 有效期 72 小时（博客站低频访问，无需短时效）
+    expire-hours: 72
+  minio:
+    # 对象存储服务地址（P2 前需本地启动，见根 README 环境清单）
+    endpoint: http://localhost:9000
+    access-key: ${MINIO_ACCESS_KEY:minioadmin}
+    secret-key: ${MINIO_SECRET_KEY:minioadmin}
+    bucket: blog
+  security:
+    # 认证白名单：不需要登录即可访问的路径（Ant 风格通配符）。
+    # 写在配置文件而非代码里的好处：改放行规则不用改代码重新编译。
+    ignore-paths:
+      - /api/v1/auth/**

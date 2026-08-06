@@ -1,0 +1,9 @@
+# ============================================================
+# 开发环境配置（spring.profiles.active=dev 时覆盖公共配置）
+# ============================================================
+mybatis-plus:
+  configuration:
+    # SQL 日志打印到控制台（StdOutImpl = 标准输出实现）
+    # 原生 MyBatis 时代要额外引入 log4j 并手写 log4j2.xml 配置；
+    # MP 这里一行搞定，学习调试时观察每次请求生成的 SQL 非常直观
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
