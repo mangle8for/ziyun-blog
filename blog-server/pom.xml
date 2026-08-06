@@ -53,13 +53,20 @@
 
 		<!--
 		  Spring Security：P2 阶段启用 JWT 认证与接口鉴权。
-		  现在引入是因为 Boot 启动时若 classpath 有 security 而无配置，
-		  默认会要求所有接口登录（P2 再写 SecurityConfig 放行策略）。
+		  【当前已注释】原因：P0/P1 阶段还没有写 SecurityConfig，
+		  若 classpath 存在 security 而没有任何配置，Boot 的
+		  UserDetailsServiceAutoConfiguration 会启用默认行为 ——
+		  随机生成密码 + 拦截所有接口（启动日志可见
+		  "Using generated security password" 警告，接口全部 401）。
+		  对当前阶段纯属噪音，故先注释；P2 引入 JwtAuthenticationFilter
+		  与 SecurityConfig 时恢复本依赖。
 		-->
+		<!--
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
+		-->
 
 		<!--
 		  JSR-380 参数校验（@Valid/@NotNull/@Size 等）。
@@ -151,11 +158,17 @@
 			<artifactId>spring-boot-starter-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!--
+		  Spring Security 测试支持（@WithMockUser 等）：与 security 主依赖
+		  一同在 P2 恢复。当前阶段无安全相关测试，无需保留。
+		-->
+		<!--
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+		-->
 	</dependencies>
 
 	<build>
