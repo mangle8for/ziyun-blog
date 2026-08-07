@@ -1,5 +1,8 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+// 中文语言包：按需引入模式下不再全量 app.use(ElementPlus)，
+// 改用 el-config-provider 在根组件提供 locale（el-pagination 等内置文案生效）
+import zhCn from 'element-plus/es/locale/lang/zh-cn'
 
 import { useUserStore } from '@/stores/user'
 import { useTheme } from '@/utils/theme'
@@ -23,5 +26,7 @@ onMounted(() => {
 </script>
 
 <template>
-  <router-view />
+  <el-config-provider :locale="zhCn">
+    <router-view />
+  </el-config-provider>
 </template>

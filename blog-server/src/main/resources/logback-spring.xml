@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  logback-spring.xml：日志配置（支持 <springProfile> 按环境差异化）。
+
+  设计说明：
+  - console：控制台输出（dev 用，便于开发调试）；
+  - rolling-file：生产滚动文件日志（logs/blog-server.log），
+    按天 + 100MB 双条件滚动，最多保留 14 天，防止磁盘被日志占满；
+  - dev 环境：控制台 INFO 级，不写文件（本地看控制台即可）；
+  - prod 环境：控制台 WARN 级（运维看启动/异常）+ 文件 INFO 级全量。
+  - 文件名带 %d{yyyy-MM-dd}，Spring 启动时按天生成，重启不覆盖。
+-->
+<configuration>
+    <!-- 控制台输出：带颜色（%highlight）便于区分级别 -->
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %highlight(%-5level) [%thread] %cyan(%logger{36}) - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- 滚动文件输出：生产环境使用 -->
+    <appender name="rolling-file" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>logs/blog-server.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <!-- 按天滚动：当天日志写 blog-server.log，历史归档带日期后缀 -->
+            <fileNamePattern>logs/blog-server.%d{yyyy-MM-dd}.%i.log</fileNamePattern>
+            <!-- 双条件：日期切分 + 单文件 100MB 上限（%i 序号递增） -->
+            <timeBasedFileNamingAndTriggeringPolicy class="ch.qos.logback.core.rolling.SizeAndTimeBasedFNATP">
+                <maxFileSize>100MB</maxFileSize>
+            </timeBasedFileNamingAndTriggeringPolicy>
+            <!-- 最多保留 14 天，超期自动清理 -->
+            <maxHistory>14</maxHistory>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n</pattern>
+            <charset>UTF-8</charset>
+        </encoder>
+    </appender>
+
+    <!-- dev：控制台 INFO，不写文件 -->
+    <springProfile name="dev">
+        <root level="INFO">
+            <appender-ref ref="console"/>
+        </root>
+    </springProfile>
+
+    <!-- prod：文件 INFO 全量 + 控制台 WARN（生产不刷屏） -->
+    <springProfile name="prod">
+        <root level="INFO">
+            <appender-ref ref="rolling-file"/>
+            <appender-ref ref="console"/>
+        </root>
+        <logger name="com.zaxxer.hikari" level="WARN"/>
+    </springProfile>
+
+    <!-- 未激活 dev/prod（如默认 profile）时兜底：仅控制台 WARN -->
+    <springProfile name="!dev &amp; !prod">
+        <root level="WARN">
+            <appender-ref ref="console"/>
+        </root>
+    </springProfile>
+</configuration>

@@ -100,8 +100,8 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
-            <el-button :icon="Edit" link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button :icon="Delete" link type="danger" @click="onDelete(row)">删除</el-button>
+            <el-button :icon="Edit" link type="primary" @click="openEdit(row as Category)">编辑</el-button>
+            <el-button :icon="Delete" link type="danger" @click="onDelete(row as Category)">删除</el-button>
           </template>
         </el-table-column>
         <template #empty>

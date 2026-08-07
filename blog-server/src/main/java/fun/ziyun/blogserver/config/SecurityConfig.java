@@ -8,6 +8,7 @@ import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.config.annotation.authentication.configuration.AuthenticationConfiguration;
@@ -19,6 +20,9 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
 import java.util.List;
 
@@ -62,6 +66,8 @@ public class SecurityConfig {
         http
                 // 1. 无状态 + 关 CSRF（见类注释）
                 .csrf(AbstractHttpConfigurer::disable)
+                // CORS：仅当配置了允许来源时生效（同域部署零影响）
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 // 2. 授权规则
@@ -83,8 +89,32 @@ public class SecurityConfig {
                                 writeJson(response, ResultCode.FORBIDDEN)))
                 // 4. 自定义 JWT 过滤器插入到表单登录过滤器之前
                 //    （表单登录过滤器是链上默认的认证入口，JWT 要抢在它前面）
-                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class)
+                // 5. 安全响应头：在 Spring Security 默认头（nosniff/X-Frame-Options 等）
+                //    基础上补 Referrer-Policy，控制跳转外站时的来源信息泄漏
+                .headers(headers -> headers
+                        .referrerPolicy(referrer -> referrer.policy(
+                                org.springframework.security.web.header.writers.ReferrerPolicyHeaderWriter.ReferrerPolicy.STRICT_ORIGIN_WHEN_CROSS_ORIGIN)));
         return http.build();
+    }
+
+    /**
+     * CORS 配置源：从 blog.security.cors-allowed-origins 读取白名单。
+     * 列表为空时不注册任何允许来源 —— 浏览器端未配置 origin 的预检
+     * 请求不会通过，等同「未开启 CORS」（同域部署的默认预期）。
+     */
+    @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOrigins(securityProperties.getCorsAllowedOrigins());
+        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+        config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE));
+        // 允许携带 Authorization 头（JWT 认证依赖），预检缓存 1 小时
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/api/**", config);
+        return source;
     }
 
     /** 密码编码器：Bean 声明后 Spring Security 自动用于密码比对 */

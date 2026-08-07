@@ -125,11 +125,11 @@ onMounted(load)
               :icon="Refresh"
               link
               :type="row.status === 1 ? 'warning' : 'success'"
-              @click="toggleStatus(row)"
+              @click="toggleStatus(row as ArticleListItem)"
             >
               {{ row.status === 1 ? '转草稿' : '发布' }}
             </el-button>
-            <el-button :icon="Delete" link type="danger" @click="onDelete(row)">删除</el-button>
+            <el-button :icon="Delete" link type="danger" @click="onDelete(row as ArticleListItem)">删除</el-button>
           </template>
         </el-table-column>
         <template #empty>

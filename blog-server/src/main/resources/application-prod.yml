@@ -1,6 +1,10 @@
 # ============================================================
 # 生产环境配置（spring.profiles.active=prod 时覆盖公共配置）
 # ============================================================
+server:
+  # 生产端口可经环境变量覆盖（默认 8080）
+  port: ${SERVER_PORT:8080}
+
 spring:
   # 生产必须显式注入所有密钥，禁止使用公共配置里的默认回退值
   datasource:
@@ -34,3 +38,7 @@ blog:
       access-key-secret: ${OSS_ACCESS_KEY_SECRET}
       bucket: ${OSS_BUCKET:ziyun-webstudy-project}
       base-path: ${OSS_BASE_PATH:blog}
+  security:
+    # 跨域白名单：同域部署（nginx 反代）留空即可；跨域部署时注入逗号分隔的来源，
+    # 如 https://blog.example.com（Spring 自动按逗号拆分绑定到 List）
+    cors-allowed-origins: ${CORS_ALLOWED_ORIGINS:}

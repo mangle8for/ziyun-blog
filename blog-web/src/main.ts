@@ -1,10 +1,12 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
-import ElementPlus from 'element-plus'
-import zhCn from 'element-plus/es/locale/lang/zh-cn'
-import 'element-plus/dist/index.css'
-// Element Plus 官方暗色变量：配合 html.dark class 切换（见 utils/theme.ts）
+// Element Plus 暗色变量：配合 html.dark class 切换（见 utils/theme.ts）。
+// 按需引入模式下组件样式由 unplugin 注入，此处只需官方暗色变量全集。
 import 'element-plus/theme-chalk/dark/css-vars.css'
+// ElMessage/ElMessageBox 在 .ts 工具与多个组件中以编程方式调用，
+// 其样式不在模板解析范围，需显式引入一次（全量 css 移除后的兜底）
+import 'element-plus/es/components/message/style/css'
+import 'element-plus/es/components/message-box/style/css'
 
 import App from './App.vue'
 import router from './router'
@@ -16,7 +18,5 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
-// Element Plus 全量注册，并指定中文语言包（内置组件的默认文案随 locale 切换）
-app.use(ElementPlus, { locale: zhCn })
 
 app.mount('#app')
