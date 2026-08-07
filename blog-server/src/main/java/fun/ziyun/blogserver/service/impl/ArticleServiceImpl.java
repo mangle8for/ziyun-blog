@@ -147,8 +147,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setCover(dto.getCover());
         article.setCategoryId(dto.getCategoryId());
         article.setStatus(dto.getStatus());
-        // updateById 只更新非 null 字段（MP 默认策略），
-        // 配合 updateFill 自动刷新 update_time
+        // updateById 配合 strictUpdateFill 时，若实体 updateTime 非 null 不会覆盖，
+        // 因此业务层显式设置当前时间，确保修改后 update_time 必然刷新。
+        article.setUpdateTime(LocalDateTime.now());
         this.updateById(article);
 
         replaceTags(id, dto.getTagIds());
@@ -162,6 +163,7 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return;
         }
         article.setStatus(status);
+        article.setUpdateTime(LocalDateTime.now());
         this.updateById(article);
     }
 

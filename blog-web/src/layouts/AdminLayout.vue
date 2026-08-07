@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ArrowLeft, DocumentAdd, List, SwitchButton } from '@element-plus/icons-vue'
+import { computed, onMounted } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import { ArrowLeft, CollectionTag, DocumentAdd, List, Moon, PriceTag, Sunny, SwitchButton } from '@element-plus/icons-vue'
 
 import { useUserStore } from '@/stores/user'
+import { useTheme } from '@/utils/theme'
 
 const router = useRouter()
+const route = useRoute()
 const userStore = useUserStore()
+const { theme, toggleTheme } = useTheme()
 
 /** 登录后若 Pinia 还没用户信息（刷新场景），拉取一次恢复 */
 onMounted(() => {
@@ -19,6 +22,15 @@ async function onLogout() {
   await userStore.logout()
   router.push('/login')
 }
+
+const menuItems = [
+  { path: '/admin/articles', label: '文章管理', icon: List },
+  { path: '/admin/articles/new', label: '写文章', icon: DocumentAdd },
+  { path: '/admin/categories', label: '分类管理', icon: CollectionTag },
+  { path: '/admin/tags', label: '标签管理', icon: PriceTag },
+]
+
+const activePath = computed(() => route.path)
 </script>
 
 <template>
@@ -29,22 +41,29 @@ async function onLogout() {
         <span class="brand">✦ 紫云 · 管理后台</span>
       </div>
       <div class="nav-right">
-        <el-button :icon="ArrowLeft" link @click="router.push('/')">返回博客</el-button>
-        <span class="user-name">{{ userStore.userInfo?.nickname ?? userStore.userInfo?.username }}</span>
-        <el-button :icon="SwitchButton" link @click="onLogout">退出</el-button>
-      </div>
+          <el-button :icon="ArrowLeft" link @click="router.push('/')">返回博客</el-button>
+          <el-tooltip :content="theme === 'dark' ? '切换到自然绿意' : '切换到星际拓荒'" placement="bottom">
+            <el-button class="icon-btn" circle @click="toggleTheme">
+              <el-icon><Moon v-if="theme === 'dark'" /><Sunny v-else /></el-icon>
+            </el-button>
+          </el-tooltip>
+          <span class="user-name">{{ userStore.userInfo?.nickname ?? userStore.userInfo?.username }}</span>
+          <el-button :icon="SwitchButton" link @click="onLogout">退出</el-button>
+        </div>
     </header>
 
     <div class="admin-body">
       <!-- 侧栏 -->
       <aside class="admin-side">
-        <div class="side-item active">
-          <el-icon><List /></el-icon>
-          <span>文章管理</span>
-        </div>
-        <div class="side-item" @click="router.push('/admin/articles/new')">
-          <el-icon><DocumentAdd /></el-icon>
-          <span>写文章</span>
+        <div
+          v-for="item in menuItems"
+          :key="item.path"
+          class="side-item"
+          :class="{ active: activePath === item.path }"
+          @click="router.push(item.path)"
+        >
+          <el-icon><component :is="item.icon" /></el-icon>
+          <span>{{ item.label }}</span>
         </div>
       </aside>
 
@@ -93,6 +112,12 @@ async function onLogout() {
 
 .user-name {
   font-size: 14px;
+  color: var(--text-main);
+}
+
+.icon-btn {
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
   color: var(--text-main);
 }
 

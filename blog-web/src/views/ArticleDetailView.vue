@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
@@ -21,6 +21,7 @@ const notFound = ref(false)
 /** MdPreview 的主题跟随全局（md-editor-v3 内置 dark 主题） */
 function loadDetail(id: string) {
   loading.value = true
+  article.value = null
   notFound.value = false
   getArticleDetail(id)
     .then((data) => {
@@ -33,6 +34,17 @@ function loadDetail(id: string) {
       loading.value = false
     })
 }
+
+/**
+ * 上一篇/下一篇跳转时路由只是参数变化（/article/:id 同一路由记录），
+ * Vue Router 会复用组件实例、onMounted 不重跑，必须监听 :id 变化重新加载。
+ */
+watch(
+  () => route.params.id,
+  (id) => {
+    loadDetail(id as string)
+  },
+)
 
 function formatDateTime(iso?: string) {
   return iso ? iso.replace('T', ' ').slice(0, 16) : ''

@@ -288,16 +288,21 @@ onMounted(() => {
   border-color: var(--color-primary);
 }
 
-/* 文章卡片网格：桌面双列，移动单列 */
+/* 文章卡片瀑布流：CSS 多列布局实现自适应错落，不强制等高管齐。
+   列内卡片 break-inside 防断裂 + 底部间距，封面高度不一的卡片
+   按内容自然堆积（如左列两张矮卡、右列一张带图高卡），
+   比 Grid 等高网格更贴合「图片 + 摘要」类卡片场景。 */
 .article-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 20px;
+  column-count: 2;
+  column-gap: 20px;
   min-height: 200px;
 }
 
 .article-card {
   cursor: pointer;
+  width: 100%;
+  break-inside: avoid;
+  margin-bottom: 20px;
   /* 卡片入场浮起动画 */
   animation: card-in 0.5s ease both;
 }
@@ -325,6 +330,13 @@ onMounted(() => {
   overflow: hidden;
   aspect-ratio: 16 / 9;
   background: var(--bg-page);
+  flex-shrink: 0;
+}
+
+.card-text {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .cover {
@@ -408,7 +420,8 @@ onMounted(() => {
 }
 
 .empty-state {
-  grid-column: 1 / -1;
+  /* 多列容器中跨整行显示 */
+  column-span: all;
   text-align: center;
   padding: 80px 0;
   color: var(--text-muted);
@@ -439,7 +452,7 @@ onMounted(() => {
     letter-spacing: 3px;
   }
   .article-grid {
-    grid-template-columns: 1fr;
+    column-count: 1;
   }
 }
 </style>

@@ -13,6 +13,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -50,6 +51,7 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
         }
         checkNameUnique(dto.getName(), id);
         tag.setName(dto.getName());
+        tag.setUpdateTime(LocalDateTime.now());
         this.updateById(tag);
     }
 

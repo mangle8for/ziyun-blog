@@ -116,7 +116,7 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="阅读" width="80" prop="viewCount" />
         <el-table-column label="更新时间" width="150">
-          <template #default="{ row }">{{ formatDateTime(row.createTime) }}</template>
+          <template #default="{ row }">{{ formatDateTime(row.updateTime) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right">
           <template #default="{ row }">

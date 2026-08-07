@@ -13,6 +13,7 @@ import fun.ziyun.blogserver.service.CategoryService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -51,6 +52,7 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
         checkNameUnique(dto.getName(), id);
         category.setName(dto.getName());
         category.setDescription(dto.getDescription());
+        category.setUpdateTime(LocalDateTime.now());
         this.updateById(category);
     }
 

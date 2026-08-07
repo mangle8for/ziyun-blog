@@ -6,8 +6,23 @@ const THEME_KEY = 'ziyun-blog-theme'
 /** 主题类型：dark-星际拓荒（默认）/ light-自然绿意 */
 export type ThemeMode = 'dark' | 'light'
 
+/** 从 localStorage 读取持久化主题，缺省暗色 */
+function readStoredTheme(): ThemeMode {
+  const stored = localStorage.getItem(THEME_KEY) as ThemeMode | null
+  return stored === 'dark' || stored === 'light' ? stored : 'dark'
+}
+
 /** 当前主题（模块级单例，跨组件共享同一份响应式状态） */
-const theme = ref<ThemeMode>((localStorage.getItem(THEME_KEY) as ThemeMode) || 'dark')
+const theme = ref<ThemeMode>(readStoredTheme())
+
+/**
+ * 立即同步 html.dark class，防止页面刷新/首屏闪烁。
+ * 在模块加载时执行：LoginView 等未调用 useTheme 的入口也能正确恢复主题。
+ */
+function applyThemeClass(mode: ThemeMode) {
+  document.documentElement.classList.toggle('dark', mode === 'dark')
+}
+applyThemeClass(theme.value)
 
 /**
  * 主题切换 Composable。
@@ -20,8 +35,7 @@ const theme = ref<ThemeMode>((localStorage.getItem(THEME_KEY) as ThemeMode) || '
  */
 export function useTheme() {
   watchEffect(() => {
-    const isDark = theme.value === 'dark'
-    document.documentElement.classList.toggle('dark', isDark)
+    applyThemeClass(theme.value)
     localStorage.setItem(THEME_KEY, theme.value)
   })
 

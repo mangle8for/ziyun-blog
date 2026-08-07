@@ -114,6 +114,7 @@ export interface ArticleListItem {
   viewCount: number
   likeCount: number
   createTime: string
+  updateTime: string
   tags: TagItem[]
 }
 

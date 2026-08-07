@@ -37,6 +37,8 @@ const router = createRouter({
         { path: 'articles', name: 'admin-articles', component: () => import('@/views/admin/ArticleManageView.vue') },
         { path: 'articles/new', name: 'admin-article-new', component: () => import('@/views/admin/ArticleEditView.vue') },
         { path: 'articles/:id/edit', name: 'admin-article-edit', component: () => import('@/views/admin/ArticleEditView.vue') },
+        { path: 'categories', name: 'admin-categories', component: () => import('@/views/admin/CategoryManageView.vue') },
+        { path: 'tags', name: 'admin-tags', component: () => import('@/views/admin/TagManageView.vue') },
       ],
     },
     // 兜底：未知路径回首页

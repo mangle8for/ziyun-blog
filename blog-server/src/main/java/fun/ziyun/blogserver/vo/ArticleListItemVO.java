@@ -47,6 +47,9 @@ public class ArticleListItemVO {
 
     private LocalDateTime createTime;
 
+    /** 更新时间（管理端列表展示，编辑后由服务层刷新） */
+    private LocalDateTime updateTime;
+
     /** 文章标签列表（联查 article_tag + tag 表） */
     private List<TagVO> tags;
 }

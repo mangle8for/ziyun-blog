@@ -46,4 +46,62 @@ const aboutContent = `# 关于本站
   max-width: 760px;
   margin: 0 auto;
 }
+
+/* md-editor-v3 在暗色主题下的文字/背景适配 */
+:deep(.md-editor-preview-wrapper) {
+  background: transparent;
+}
+
+:deep(.md-editor-preview) {
+  color: var(--text-main);
+  background: transparent;
+  /* 文本块与卡片背景边界之间留出呼吸空间，避免内容贴边 */
+  padding: 24px 28px;
+  line-height: 1.9;
+  font-size: 15px;
+}
+
+:deep(.md-editor-preview h1),
+:deep(.md-editor-preview h2),
+:deep(.md-editor-preview h3),
+:deep(.md-editor-preview p),
+:deep(.md-editor-preview li) {
+  color: var(--text-main);
+}
+
+:deep(.md-editor-preview h1) {
+  font-size: 26px;
+  margin-top: 4px;
+  padding-bottom: 14px;
+}
+
+:deep(.md-editor-preview h2) {
+  font-size: 20px;
+  margin-top: 32px;
+  padding-bottom: 10px;
+}
+
+:deep(.md-editor-preview p) {
+  margin: 12px 0;
+}
+
+:deep(.md-editor-preview a) {
+  color: var(--color-primary);
+}
+
+:deep(.md-editor-preview code) {
+  background: var(--bg-page);
+  color: var(--color-accent);
+}
+
+:deep(.md-editor-preview pre) {
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+}
+
+:deep(.md-editor-preview blockquote) {
+  border-left-color: var(--color-primary);
+  background: var(--bg-page);
+  color: var(--text-secondary);
+}
 </style>
