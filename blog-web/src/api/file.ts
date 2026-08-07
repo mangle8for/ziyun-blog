@@ -1,17 +1,19 @@
 import { post } from '@/utils/request'
 import type { UploadResult } from '@/types'
 
-/** 通用文件上传（multipart，字段名 file） */
+/**
+ * 通用文件上传（multipart，字段名 file）。
+ * 后端直接返回可访问 URL 字符串。
+ */
 export function uploadFile(file: File) {
   const formData = new FormData()
   formData.append('file', file)
-  return post<UploadResult>('/api/v1/files/upload', formData, {
+  return post<UploadResult>('/api/v1/files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
 
-/** 上传图片（md-editor-v3 的 uploadImage 回调用，直接返回 URL） */
+/** md-editor-v3 的图片上传回调适配：组件要求返回 URL 数组 */
 export async function uploadImage(file: File): Promise<string> {
-  const data = await uploadFile(file)
-  return data.url
+  return uploadFile(file)
 }

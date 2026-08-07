@@ -2,7 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 import { getProfile, login as loginApi, logout as logoutApi } from '@/api/auth'
-import type { LoginForm, User } from '@/types'
+import type { LoginPayload, User } from '@/types'
 
 /** token 持久化键名 */
 const TOKEN_KEY = 'ziyun-blog-token'
@@ -17,9 +17,11 @@ export const useUserStore = defineStore('user', () => {
   const userInfo = ref<User | null>(null)
 
   const isLoggedIn = computed(() => token.value !== '')
+  /** 是否管理员（管理端路由守卫与按钮显隐用） */
+  const isAdmin = computed(() => userInfo.value?.role === 1)
 
   /** 登录：保存 token 与用户信息 */
-  async function login(form: LoginForm) {
+  async function login(form: LoginPayload) {
     const data = await loginApi(form)
     token.value = data.token
     localStorage.setItem(TOKEN_KEY, data.token)
@@ -49,5 +51,5 @@ export const useUserStore = defineStore('user', () => {
     localStorage.removeItem(TOKEN_KEY)
   }
 
-  return { token, userInfo, isLoggedIn, login, fetchProfile, logout, resetState }
+  return { token, userInfo, isLoggedIn, isAdmin, login, fetchProfile, logout, resetState }
 })

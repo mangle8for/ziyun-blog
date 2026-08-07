@@ -38,6 +38,9 @@ public interface ArticleService extends IService<Article> {
     /** 公开详情（仅已发布），带上一篇/下一篇导航 */
     ArticleDetailVO getPublishedDetail(Long id);
 
+    /** 管理端详情（含草稿，编辑器回填用；不拼上一篇/下一篇导航） */
+    ArticleDetailVO getManageDetail(Long id);
+
     /**
      * 管理端分页查询（含草稿与已发布）。
      *

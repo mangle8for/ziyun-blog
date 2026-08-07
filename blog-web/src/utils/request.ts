@@ -11,8 +11,10 @@ const SUCCESS_CODE = 200
 const UNAUTHORIZED_CODE = 401
 
 const instance = axios.create({
-  // baseURL 读环境变量：开发环境走 /api 由 Vite 代理到后端，生产环境替换为真实网关地址
-  baseURL: import.meta.env.VITE_API_BASE_URL,
+  // baseURL 读环境变量：默认空串 —— api 层 URL 为全路径（/api/v1/...），
+  // 开发环境由 Vite 代理、生产由 Nginx 反代；若未来 API 独立部署
+  // 再在 .env 里填完整域名，代码零改动。
+  baseURL: import.meta.env.VITE_API_BASE_URL || '',
   timeout: 15000,
 })
 

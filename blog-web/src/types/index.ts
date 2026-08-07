@@ -1,9 +1,12 @@
 /**
- * 全局类型定义。
+ * 全局类型定义（与后端契约一一对应）。
  *
- * 约定：后端所有 Long 字段经 JacksonConfig 统一序列化为字符串
- * （雪花 ID 19 位超出 JS Number 安全范围），因此 id 一律 string，
- * 与后端实体一一对应（TS 侧照抄）。
+ * 约定：
+ *  - 后端所有 Long 字段经 JacksonConfig 全局序列化为字符串
+ *    （雪花 ID 19 位超出 JS Number 安全范围），id 一律 string；
+ *  - 时间字段后端是 LocalDateTime（yyyy-MM-dd'T'HH:mm:ss），前端用 string 承载；
+ *  - 枚举值（文章状态 / 用户角色）后端是 TINYINT 数字，前端同步用 number，
+ *    展示文案在组件层映射，类型层不做字符串化（避免与后端脱节）。
  */
 
 /** 统一 API 响应包装，对齐后端 common/Result */
@@ -16,115 +19,153 @@ export interface Result<T = unknown> {
   data: T
 }
 
-/**
- * 分页查询结果包装，对齐后端 common/PageResult。
- * 注意：total/page/size 后端为 Long，序列化后是字符串，
- * 分页组件使用时需 Number() 转换。
- */
+/** 分页查询结果包装，对齐后端 common/PageResult */
 export interface PageResult<T> {
   /** 当前页数据列表 */
   records: T[]
-  /** 总记录数 */
+  /** 总记录数（Long 序列化为 string，展示时按需 Number() 转换） */
   total: string
-  /** 当前页码（从 1 开始） */
+  /** 当前页码（string，对齐后端 Long） */
   page: string
-  /** 每页大小 */
+  /** 每页大小（string，对齐后端 Long） */
   size: string
   /** 是否还有下一页 */
   hasNext: boolean
 }
 
-/** 用户角色 */
-export type UserRole = 'ADMIN' | 'USER'
+// ==================== 用户 ====================
 
-/** 用户，对齐后端 User 实体 */
+/** 用户角色：0-普通用户 1-管理员（对齐后端 TINYINT） */
+export type UserRole = 0 | 1
+
+/** 登录用户信息，对齐后端 UserVO（不含 password/email） */
 export interface User {
   id: string
   username: string
   nickname?: string
   avatar?: string
-  email?: string
   role: UserRole
-  createdAt: string
-  updatedAt: string
 }
+
+/** 登录表单 */
+export interface LoginPayload {
+  username: string
+  password: string
+}
+
+/** 注册表单 */
+export interface RegisterPayload {
+  username: string
+  password: string
+  nickname?: string
+}
+
+/** 登录成功返回：token + 用户信息一次返回 */
+export interface LoginResult {
+  token: string
+  user: User
+}
+
+// ==================== 分类 / 标签 ====================
 
 /** 文章分类，对齐后端 Category 实体 */
 export interface Category {
   id: string
   name: string
   description?: string
-  /** 排序权重（Integer，数字类型） */
-  sortOrder?: number
-  createdAt: string
-  updatedAt: string
+  createTime: string
+  updateTime: string
 }
 
 /** 文章标签，对齐后端 Tag 实体 */
 export interface Tag {
   id: string
   name: string
-  createdAt: string
-  updatedAt: string
+  createTime: string
+  updateTime: string
 }
 
-/** 文章发布状态 */
-export type ArticleStatus = 'DRAFT' | 'PUBLISHED'
+/** 分类新增/更新载荷 */
+export interface CategoryPayload {
+  name: string
+  description?: string
+}
 
-/** 文章，对齐后端 Article 实体 */
-export interface Article {
+/** 标签新增/更新载荷 */
+export interface TagPayload {
+  name: string
+}
+
+// ==================== 文章 ====================
+
+/** 文章状态：0-草稿 1-发布（对齐后端 TINYINT） */
+export type ArticleStatus = 0 | 1
+
+/** 文章列表项，对齐后端 ArticleListItemVO（不含正文） */
+export interface ArticleListItem {
   id: string
   title: string
-  /** 摘要；列表接口可能不返回正文，只返回摘要 */
   summary?: string
-  /** Markdown 原文（编辑/详情接口返回） */
-  content?: string
-  /** 封面图 URL */
   cover?: string
   categoryId?: string
-  category?: Category
-  tags?: Tag[]
-  /** 浏览量（Integer） */
-  viewCount: number
-  /** 点赞量（Integer） */
-  likeCount: number
+  categoryName?: string
+  authorName?: string
   status: ArticleStatus
-  publishedAt?: string
-  createdAt: string
-  updatedAt: string
+  viewCount: number
+  likeCount: number
+  createTime: string
+  tags: TagItem[]
 }
 
-/** 登录表单 */
-export interface LoginForm {
-  username: string
-  password: string
+/** 上一篇/下一篇导航，对齐后端 ArticleNavVO */
+export interface ArticleNav {
+  id: string
+  title: string
 }
 
-/** 注册表单 */
-export interface RegisterForm {
-  username: string
-  password: string
-  nickname?: string
-  email?: string
+/** 文章详情，对齐后端 ArticleDetailVO（含正文与导航） */
+export interface ArticleDetail {
+  id: string
+  title: string
+  summary?: string
+  content: string
+  cover?: string
+  categoryId?: string
+  categoryName?: string
+  authorName?: string
+  status: ArticleStatus
+  viewCount: number
+  likeCount: number
+  createTime: string
+  updateTime: string
+  tags: TagItem[]
+  prevArticle?: ArticleNav | null
+  nextArticle?: ArticleNav | null
 }
 
-/** 登录/注册成功返回 */
-export interface LoginResult {
-  token: string
-  user: User
+/** 标签精简项（文章卡片/详情的标签列表元素），对齐后端 TagVO */
+export interface TagItem {
+  id: string
+  name: string
 }
 
-/** 文章分页查询参数 */
+/** 文章分页查询参数（公开列表） */
 export interface ArticleQuery {
   page?: number
   size?: number
   keyword?: string
   categoryId?: string
   tagId?: string
+}
+
+/** 管理端分页查询参数（含状态过滤） */
+export interface ArticleManageQuery {
+  page?: number
+  size?: number
   status?: ArticleStatus
 }
 
-/** 文章新增/编辑载荷 */
+/** 文章新增/更新载荷，对齐后端 ArticleDTO */
 export interface ArticlePayload {
   title: string
   summary?: string
@@ -135,8 +176,12 @@ export interface ArticlePayload {
   status: ArticleStatus
 }
 
-/** 文件上传结果 */
-export interface UploadResult {
-  url: string
-  name?: string
+/** 文章状态切换载荷，对齐后端 StatusUpdateDTO */
+export interface ArticleStatusPayload {
+  status: ArticleStatus
 }
+
+// ==================== 文件 ====================
+
+/** 文件上传返回：后端直接返回可访问 URL 字符串 */
+export type UploadResult = string

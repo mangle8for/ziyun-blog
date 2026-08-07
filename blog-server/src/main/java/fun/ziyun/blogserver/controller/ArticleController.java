@@ -79,6 +79,12 @@ public class ArticleController {
         return Result.ok(articleService.pageManage(query.getPage(), query.getSize(), status));
     }
 
+    /** 管理端详情（含草稿，编辑器回填；字面量 /manage/{id} 优先于 /{id} 匹配） */
+    @GetMapping("/manage/{id}")
+    public Result<ArticleDetailVO> manageDetail(@PathVariable @Min(1) Long id) {
+        return Result.ok(articleService.getManageDetail(id));
+    }
+
     /**
      * 公开详情（含上一篇/下一篇）。
      * @Min 直接校验路径参数：非法的 id（<=0）无需进 Service，

@@ -1,0 +1,101 @@
+/* ============================================================
+ * 双主题设计令牌（Design Tokens）
+ *
+ * 设计说明（双主题机制）：
+ *  - 亮色为默认（无 html.dark）：「自然绿意」——米白底 + 森林绿，
+ *    呼应星际拓荒白天营地的自然氛围；
+ *  - 暗色为 html.dark：「星际拓荒」——深空底 + 星云紫 + 暖橙火光，
+ *    呼应夜晚仰望星海的静谧与大刘式冷峻。
+ *  - 所有组件只消费 var(--xxx)，不写死颜色 —— 主题切换 = 切 class，
+ *    无需改组件代码。
+ *  - Element Plus 暗色变量文件在 main.ts 引入（官方 html.dark 方案），
+ *    本文件只覆盖我们自定义的语义变量与少量 EP 变量桥接。
+ * ============================================================ */
+
+:root {
+  /* ---------- 亮色：自然绿意（默认） ---------- */
+  /* 页面底色：米白偏暖，模拟纸张/营地光线 */
+  --bg-page: #f4f1ea;
+  /* 卡片底色：白偏暖，略高亮于页面底 */
+  --bg-card: rgba(255, 255, 255, 0.82);
+  /* 毛玻璃强度（亮色下稍弱，保持通透感） */
+  --glass-blur: 14px;
+  /* 主色：森林绿 */
+  --color-primary: #2f7d5a;
+  --color-primary-hover: #3a9a6e;
+  /* 点缀色：暖棕（自然系第二色） */
+  --color-accent: #b06a3a;
+  /* 文字 */
+  --text-main: #2a332e;
+  --text-secondary: #5a6a62;
+  --text-muted: #8a9a92;
+  /* 边框：低对比柔和 */
+  --border-color: rgba(47, 125, 90, 0.18);
+  /* 背景图（CSS 渐变模拟林冠晨光） */
+  --bg-image:
+    radial-gradient(1200px 600px at 20% -10%, rgba(95, 158, 130, 0.25), transparent 60%),
+    radial-gradient(900px 500px at 90% 10%, rgba(176, 106, 58, 0.14), transparent 55%),
+    linear-gradient(180deg, #eef2ec 0%, #e6ede4 100%);
+  /* 阴影 */
+  --shadow-card: 0 8px 32px rgba(47, 125, 90, 0.08);
+  /* 导航栏底色 */
+  --bg-nav: rgba(244, 241, 234, 0.78);
+
+  /* Element Plus 变量桥接（亮色微调） */
+  --el-color-primary: var(--color-primary);
+}
+
+/* ---------- 暗色：星际拓荒（html.dark 激活） ---------- */
+html.dark {
+  /* 页面底色：深空黑蓝 */
+  --bg-page: #0b1220;
+  /* 卡片底色：深空蓝半透明（毛玻璃基底） */
+  --bg-card: rgba(17, 26, 44, 0.62);
+  --glass-blur: 18px;
+  /* 主色：星云紫（星际拓荒的星尘色） */
+  --color-primary: #7c6cf0;
+  --color-primary-hover: #9488f5;
+  /* 点缀色：篝火暖橙（对比色，点燃深色画面） */
+  --color-accent: #ff9d5c;
+  /* 文字 */
+  --text-main: #e8edf5;
+  --text-secondary: #a8b4c8;
+  --text-muted: #6a7890;
+  /* 边框：微光描边 */
+  --border-color: rgba(124, 108, 240, 0.22);
+  /* 背景图：星云渐变（配合 StarfieldBackground 粒子层） */
+  --bg-image:
+    radial-gradient(1200px 700px at 15% -10%, rgba(124, 108, 240, 0.28), transparent 60%),
+    radial-gradient(1000px 600px at 85% 15%, rgba(90, 140, 240, 0.16), transparent 55%),
+    radial-gradient(700px 500px at 60% 90%, rgba(255, 157, 92, 0.08), transparent 50%),
+    linear-gradient(180deg, #0b1220 0%, #101a30 100%);
+  --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --bg-nav: rgba(11, 18, 32, 0.72);
+
+  /* Element Plus 官方暗色变量已引入，这里只桥接主色 */
+  --el-color-primary: var(--color-primary);
+  /* EP 暗色底色调深空系（与其默认 #141414 微调统一） */
+  --el-bg-color: #101a30;
+  --el-bg-color-overlay: #172239;
+  --el-text-color-primary: var(--text-main);
+  --el-text-color-regular: var(--text-secondary);
+}
+
+/* ---------- 全局应用 ---------- */
+body {
+  background: var(--bg-page);
+  background-image: var(--bg-image);
+  background-attachment: fixed;
+  color: var(--text-main);
+  transition:
+    background-color 0.4s ease,
+    color 0.4s ease;
+}
+
+/* 主题切换时全元素过渡（按钮、卡片、文字统一呼吸感） */
+* {
+  transition:
+    background-color 0.3s ease,
+    border-color 0.3s ease,
+    color 0.3s ease;
+}

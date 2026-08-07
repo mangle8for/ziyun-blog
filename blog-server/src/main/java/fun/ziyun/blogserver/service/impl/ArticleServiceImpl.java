@@ -85,6 +85,19 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         return toDetailVO(article);
     }
 
+    @Override
+    public ArticleDetailVO getManageDetail(Long id) {
+        // 管理端编辑器回填需要草稿内容，不限制发布状态；
+        // 上一篇/下一篇是前台导航语义，管理端不需要（且基于发布状态排序）
+        Article article = getEntityById(id);
+        ArticleDetailVO vo = new ArticleDetailVO();
+        BeanUtils.copyProperties(article, vo);
+        vo.setCategoryName(getCategoryName(article.getCategoryId()));
+        vo.setAuthorName(getAuthorName(article.getAuthorId()));
+        vo.setTags(getTagsOfArticle(article.getId()));
+        return vo;
+    }
+
     // ==================== 管理端 ====================
 
     @Override

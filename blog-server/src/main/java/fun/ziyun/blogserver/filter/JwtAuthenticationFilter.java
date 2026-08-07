@@ -6,7 +6,6 @@ import fun.ziyun.blogserver.common.ResultCode;
 import fun.ziyun.blogserver.security.AuthUser;
 import fun.ziyun.blogserver.util.JwtUtil;
 import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.ExpiredJwtException;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -43,12 +42,21 @@ import java.util.List;
  * 流程：
  *   1. 取 Authorization: Bearer xxx 头（无 token 直接放行 —— 匿名请求，
  *      是否允许访问由后续授权过滤器按白名单决定）；
- *   2. JwtUtil 校验签名与过期（篡改/过期 -> 直接 401 返回）；
+ *   2. JwtUtil 校验签名与过期（篡改/过期 -> 视为匿名，放行授权链）;
  *   3. 查 Redis login:token:{userId} 比对 token —— 防「登出后旧 token
- *      仍有效」与「同账号被新登录顶号」（fail-closed：Redis 不可用时
- *      返回 503，见 RedisConfig 说明）；
+ *      仍有效」与「同账号被新登录顶号」；
  *   4. 校验通过 -> 构造 Authentication 存入 SecurityContext，
  *      后续 Controller 通过 SecurityContextHolder 获取当前用户。
+ *
+ * 【关键设计 —— 校验失败为何降级为匿名而非直接 401】：
+ * 用户可能带着「已失效的旧 token」访问公开接口（如首页文章列表），
+ * 此时请求本质是游客访问，应当放行。若过滤器直接返回 401，
+ * 会导致公开页面因残留 token 而无法访问（真实踩过的坑）。
+ * 因此 token 无效时不写响应，仅不设置认证 —— 由后续授权过滤器裁决：
+ *   - 公开路径（permitAll）-> 放行，游客正常浏览；
+ *   - 受限路径（authenticated/hasRole）-> 触发 AuthenticationEntryPoint 返回 401。
+ * 唯一例外：Redis 连接异常属于基础设施故障（fail-closed），
+ * 无法判断 token 真实性，直接 503 明确告知（见 RedisConfig 说明）。
  * </pre>
  */
 @Slf4j
@@ -84,7 +92,8 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             // （登出删 key -> 旧 token 失效；新登录覆盖 -> 顶号生效）
             String redisToken = stringRedisTemplate.opsForValue().get(LOGIN_TOKEN_KEY + userId);
             if (redisToken == null || !redisToken.equals(token)) {
-                writeJson(response, ResultCode.UNAUTHORIZED, "登录已失效，请重新登录");
+                // 已登出/被顶号：降级为匿名，交给授权链裁决（见类注释）
+                filterChain.doFilter(request, response);
                 return;
             }
 
@@ -100,12 +109,10 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                     new UsernamePasswordAuthenticationToken(authUser, null,
                             authUser.getAuthorities());
             SecurityContextHolder.getContext().setAuthentication(authentication);
-        } catch (ExpiredJwtException e) {
-            writeJson(response, ResultCode.UNAUTHORIZED, "登录已过期，请重新登录");
-            return;
         } catch (JwtException e) {
-            writeJson(response, ResultCode.UNAUTHORIZED, "无效的登录凭证");
-            return;
+            // 签名无效/已过期（ExpiredJwtException 是其子类）：降级为匿名放行
+            // （公开接口应允许游客访问，受限接口由授权链返回 401 —— 见类注释）
+            log.debug("JWT 校验失败，按匿名请求处理: {}", e.getMessage());
         } catch (RedisConnectionFailureException e) {
             // fail-closed：Redis 不可用时无法确认登录态真实性，宁可拒绝服务
             // 也不放行 —— 若放行，登出/顶号全部失效，攻击面更大
