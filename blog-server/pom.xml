@@ -53,20 +53,13 @@
 
 		<!--
 		  Spring Security：P2 阶段启用 JWT 认证与接口鉴权。
-		  【当前已注释】原因：P0/P1 阶段还没有写 SecurityConfig，
-		  若 classpath 存在 security 而没有任何配置，Boot 的
-		  UserDetailsServiceAutoConfiguration 会启用默认行为 ——
-		  随机生成密码 + 拦截所有接口（启动日志可见
-		  "Using generated security password" 警告，接口全部 401）。
-		  对当前阶段纯属噪音，故先注释；P2 引入 JwtAuthenticationFilter
-		  与 SecurityConfig 时恢复本依赖。
+		  P0 阶段曾注释本依赖（避免默认随机密码+全接口拦截噪音），
+		  现在 SecurityConfig + JwtAuthenticationFilter 已就绪，恢复依赖。
 		-->
-		<!--
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-security</artifactId>
 		</dependency>
-		-->
 
 		<!--
 		  JSR-380 参数校验（@Valid/@NotNull/@Size 等）。
@@ -159,16 +152,27 @@
 			<scope>test</scope>
 		</dependency>
 		<!--
-		  Spring Security 测试支持（@WithMockUser 等）：与 security 主依赖
-		  一同在 P2 恢复。当前阶段无安全相关测试，无需保留。
+		  Spring Security 测试支持（@WithMockUser 等），与 security 主依赖同步恢复。
 		-->
-		<!--
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-test</artifactId>
 			<scope>test</scope>
 		</dependency>
+
+		<!--
+		  阿里云 OSS SDK：对象存储客户端。
+		  P2 起通过「存储抽象层」接入（FileService 接口 + 配置开关切换底层），
+		  OSS 是当前默认实现，MinIO 实现预留（未来扩展只需新增实现类）。
+		  对比 MinIO SDK：接口形态类似（putObject/getObject），
+		  因此抽象层方法签名按「最小公共能力」设计（upload/delete），
+		  保证换底层时业务代码零改动。
 		-->
+		<dependency>
+			<groupId>com.aliyun.oss</groupId>
+			<artifactId>aliyun-sdk-oss</artifactId>
+			<version>3.18.5</version>
+		</dependency>
 	</dependencies>
 
 	<build>

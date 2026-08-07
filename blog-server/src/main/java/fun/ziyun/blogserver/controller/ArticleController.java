@@ -2,16 +2,18 @@ package fun.ziyun.blogserver.controller;
 
 import fun.ziyun.blogserver.common.PageResult;
 import fun.ziyun.blogserver.common.Result;
-import fun.ziyun.blogserver.common.ResultCode;
 import fun.ziyun.blogserver.dto.ArticleDTO;
 import fun.ziyun.blogserver.dto.PageQuery;
 import fun.ziyun.blogserver.dto.StatusUpdateDTO;
 import fun.ziyun.blogserver.service.ArticleService;
+import fun.ziyun.blogserver.service.AsyncViewCountService;
 import fun.ziyun.blogserver.vo.ArticleDetailVO;
 import fun.ziyun.blogserver.vo.ArticleListItemVO;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
@@ -51,6 +53,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class ArticleController {
 
     private final ArticleService articleService;
+    private final AsyncViewCountService asyncViewCountService;
 
     /**
      * 公开分页列表。
@@ -80,10 +83,31 @@ public class ArticleController {
      * 公开详情（含上一篇/下一篇）。
      * @Min 直接校验路径参数：非法的 id（<=0）无需进 Service，
      * 入口即拦截（400 而非 404，语义区分）。
+     *
+     * 浏览量：异步计数（@Async）+ Redis 同 IP 去重，不阻塞本请求
+     * （详见 AsyncViewCountService 设计说明）。
      */
     @GetMapping("/{id}")
-    public Result<ArticleDetailVO> detail(@PathVariable @Min(1) Long id) {
-        return Result.ok(articleService.getPublishedDetail(id));
+    public Result<ArticleDetailVO> detail(@PathVariable @Min(1) Long id,
+                                          HttpServletRequest request) {
+        Result<ArticleDetailVO> result = Result.ok(articleService.getPublishedDetail(id));
+        asyncViewCountService.recordView(id, getClientIp(request));
+        return result;
+    }
+
+    /**
+     * 获取客户端真实 IP。
+     * 部署在 Nginx 反代后，直接取 RemoteAddr 得到的是 Nginx 的地址，
+     * 需读 X-Forwarded-For（Nginx proxy_set_header 配置，见 docs/nginx.conf）。
+     * 注：XFF 头可伪造，但这里仅用于浏览量去重，非安全边界，够用即可。
+     */
+    private String getClientIp(HttpServletRequest request) {
+        String forwarded = request.getHeader("X-Forwarded-For");
+        if (StringUtils.hasText(forwarded)) {
+            // XFF 形如 "客户端IP, 代理1, 代理2"，取第一个
+            return forwarded.split(",")[0].trim();
+        }
+        return request.getRemoteAddr();
     }
 
     /** 新增文章，返回新文章 ID（前端拿到后可直接跳编辑页） */

@@ -47,6 +47,15 @@ spring:
     date-format: yyyy-MM-dd HH:mm:ss
     time-zone: Asia/Shanghai
 
+  # ---------- 文件上传大小限制（P2 文件接口使用） ----------
+  # 设计说明：Multipart 默认上限 1MB，图片上传必须调大。
+  # 业务层还有 5MB 白名单校验（更早的入口拦截），这里的配置是
+  # Servlet 容器级兜底 —— 两层都要，漏一层都可能出问题。
+  servlet:
+    multipart:
+      max-file-size: 5MB
+      max-request-size: 6MB
+
 server:
   port: 8080
   # 优雅停机：接收到关闭信号后先拒绝新请求、处理完存量请求再退出
@@ -86,14 +95,31 @@ blog:
     secret: ${JWT_SECRET:ziyun-blog-dev-secret-key-please-change-in-prod}
     # token 有效期 72 小时（博客站低频访问，无需短时效）
     expire-hours: 72
-  minio:
-    # 对象存储服务地址（P2 前需本地启动，见根 README 环境清单）
-    endpoint: http://localhost:9000
-    access-key: ${MINIO_ACCESS_KEY:minioadmin}
-    secret-key: ${MINIO_SECRET_KEY:minioadmin}
-    bucket: blog
+  # ---------- 文件存储抽象层 ----------
+  # 设计说明（一键切换底层存储）：
+  #   type 指定当前实现：oss（阿里云 OSS）/ minio（预留，接入时新增实现类即可）。
+  #   业务代码只依赖 FileService 接口，不感知底层 —— 换存储 = 改一个配置值，
+  #   无需数据迁移（图片地址是拼接出的 URL，key 规则一致即可复用）。
+  storage:
+    type: oss
+    oss:
+      # 区域 Endpoint（不带 bucket 前缀，SDK 拼接）
+      endpoint: https://oss-cn-beijing.aliyuncs.com
+      # ⚠️ 安全提醒：以下为开发环境凭据（写在 yml 便于本地联调）。
+      # 生产环境必须用环境变量覆盖（见 application-prod.yml），
+      # 且 AccessKey 建议在 RAM 子账号上创建、仅授予本 bucket 权限。
+      access-key-id: ${OSS_ACCESS_KEY_ID:LTAI5t5t5N2ApfVUeqsJwj5W}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:oRXVhydGXkXKECUyEUE9WhfO6DLpXm}
+      # 桶名（需在控制台预先创建，且设为「公共读」才能直接 URL 访问）
+      bucket: ziyun-webstudy-project
+      # 桶内文件统一放 blog 目录下（OSS 无目录概念，key 前缀模拟，
+      # 便于与桶内其他业务隔离、按前缀批量管理）
+      base-path: blog
   security:
-    # 认证白名单：不需要登录即可访问的路径（Ant 风格通配符）。
-    # 写在配置文件而非代码里的好处：改放行规则不用改代码重新编译。
+    # 认证白名单：完全公开的路径（无需任何登录态）。
+    # 注意：/auth/me 与 /auth/logout 需要「已登录」而非公开，
+    # 故不在这里配置，而在 SecurityConfig 中用 authenticated() 单独声明。
     ignore-paths:
-      - /api/v1/auth/**
+      - /api/v1/auth/login
+      - /api/v1/auth/register
+

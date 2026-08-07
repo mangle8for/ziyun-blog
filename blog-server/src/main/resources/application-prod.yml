@@ -25,3 +25,12 @@ blog:
   jwt:
     # 生产强制使用环境变量，不提供默认值（启动即失败，防止弱密钥上线）
     secret: ${JWT_SECRET}
+  storage:
+    type: ${STORAGE_TYPE:oss}
+    oss:
+      endpoint: ${OSS_ENDPOINT}
+      # 生产不提供默认凭据：环境变量缺失直接启动失败
+      access-key-id: ${OSS_ACCESS_KEY_ID}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET}
+      bucket: ${OSS_BUCKET:ziyun-webstudy-project}
+      base-path: ${OSS_BASE_PATH:blog}
