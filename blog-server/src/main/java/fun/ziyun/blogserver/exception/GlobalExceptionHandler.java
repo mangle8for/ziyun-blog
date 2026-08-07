@@ -9,6 +9,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 全局异常处理器。
@@ -58,6 +59,23 @@ public class GlobalExceptionHandler {
                 ? ResultCode.BAD_REQUEST.getMsg()
                 : fieldError.getField() + " " + fieldError.getDefaultMessage();
         return Result.fail(ResultCode.BAD_REQUEST, msg);
+    }
+
+    /**
+     * 静态资源/路径未映射异常：Spring 6.1+ 对访问不存在的 URL 抛此异常。
+     *
+     * <p>设计说明（兜底 handler 的一个经典坑）：</p>
+     * <pre>
+     * 没写本方法前，该异常会被下方兜底 handler 接住 -> 返回 500。
+     * 但"路径不存在"是客户端问题（404），不是服务器故障（500），
+     * 两者语义完全不同：监控告警按 5xx 计数，404 刷屏会误触发告警。
+     * 单独接管并映射为 404，同时保持响应 JSON 风格一致。
+     * </pre>
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    @ResponseStatus(HttpStatus.NOT_FOUND)
+    public Result<Void> handleNoResourceFound(NoResourceFoundException e) {
+        return Result.fail(ResultCode.NOT_FOUND);
     }
 
     /**
