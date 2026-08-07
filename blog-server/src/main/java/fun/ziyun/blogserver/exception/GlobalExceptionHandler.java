@@ -4,12 +4,19 @@ import fun.ziyun.blogserver.common.Result;
 import fun.ziyun.blogserver.common.ResultCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.ResponseStatus;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
+
+import jakarta.validation.ConstraintViolation;
+import jakarta.validation.ConstraintViolationException;
+
+import java.util.stream.Collectors;
 
 /**
  * 全局异常处理器。
@@ -41,7 +48,10 @@ public class GlobalExceptionHandler {
         if (e.getResultCode().getCode() >= 500) {
             log.error("业务异常", e);
         }
-        return Result.fail(e.getResultCode());
+        // 注意用 e.getMessage() 而非枚举默认消息：BusinessException 支持
+        // 携带自定义消息（如"文章不存在，id=xxx"），此处必须保留，
+        // 否则自定义消息被丢弃，前端只能看到笼统的"资源不存在"。
+        return Result.fail(e.getResultCode(), e.getMessage());
     }
 
     /**
@@ -59,6 +69,55 @@ public class GlobalExceptionHandler {
                 ? ResultCode.BAD_REQUEST.getMsg()
                 : fieldError.getField() + " " + fieldError.getDefaultMessage();
         return Result.fail(ResultCode.BAD_REQUEST, msg);
+    }
+
+    /**
+     * 方法参数/路径参数校验异常：@PathVariable/@RequestParam 上的
+     * 校验注解（如 @Min(1)）失败时抛此异常。
+     *
+     * <p>设计说明（两套参数校验触发点）：</p>
+     * <pre>
+     * 1. @RequestBody DTO + @Valid  -> MethodArgumentNotValidException
+     *    （字段在 JSON body 里，异常里挂 BindingResult）；
+     * 2. 路径/查询参数 + 类级 @Validated -> ConstraintViolationException
+     *    （参数是方法签名的一部分，异常里挂 Violation 集合）。
+     * 两套异常类型不同，必须分别处理，否则第二种会漏到 500 兜底 ——
+     * 这也是本次踩到的真实坑（id=0 校验失败返回了 500）。
+     * </pre>
+     */
+    @ExceptionHandler(ConstraintViolationException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleConstraintViolation(ConstraintViolationException e) {
+        String msg = e.getConstraintViolations().stream()
+                .map(ConstraintViolation::getMessage)
+                .collect(Collectors.joining("; "));
+        return Result.fail(ResultCode.BAD_REQUEST, msg);
+    }
+
+    /**
+     * 请求体解析失败：JSON 语法错误 / 类型不匹配 / body 缺失。
+     *
+     * <p>设计说明：Jackson 解析失败抛 HttpMessageNotReadableException，
+     * 这是「客户端提交了无法解析的数据」—— 客户端问题应回 400。
+     * 不处理会漏进兜底 500，语义错误且可能把解析细节（含字段名）
+     * 原样泄漏到响应里。</p>
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleMessageNotReadable(HttpMessageNotReadableException e) {
+        log.warn("请求体解析失败: {}", e.getMessage());
+        return Result.fail(ResultCode.BAD_REQUEST, "请求体格式错误");
+    }
+
+    /**
+     * 类型不匹配：路径/查询参数无法转换为目标类型（如 id 传了非数字）。
+     * 客户端提交了错误类型的数据 -> 400，与 ConstraintViolationException 相邻，
+     * 但异常类型不同（Spring 转换层抛 MethodArgumentTypeMismatchException）。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    @ResponseStatus(HttpStatus.BAD_REQUEST)
+    public Result<Void> handleTypeMismatch(MethodArgumentTypeMismatchException e) {
+        return Result.fail(ResultCode.BAD_REQUEST, "参数类型错误: " + e.getName());
     }
 
     /**
