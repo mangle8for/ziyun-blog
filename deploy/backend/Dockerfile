@@ -16,9 +16,10 @@ ENV TZ=Asia/Shanghai \
     # 2G 服务器内存专项调优：
     #   -Xms256m -Xmx512m：显式定死堆大小，防止 JVM 按物理内存 1/4 自动伸缩
     #   -XX:MaxMetaspaceSize=192m：限制类元数据，防泄漏时失控
+    #   -XX:ReservedCodeCacheSize=128m：限制 JIT 代码缓存（默认上限 240m）
     #   -XX:+ExitOnOutOfMemoryError：堆耗尽直接退出，交给 compose restart 拉起
     #   （JAVA_OPTS 可在 docker-compose.yml 中覆盖）
-    JAVA_OPTS="-Xms256m -Xmx512m -XX:MaxMetaspaceSize=192m -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8"
+    JAVA_OPTS="-Xms256m -Xmx512m -XX:MaxMetaspaceSize=192m -XX:ReservedCodeCacheSize=128m -XX:+ExitOnOutOfMemoryError -Dfile.encoding=UTF-8"
 
 WORKDIR /app
 

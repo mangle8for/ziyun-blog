@@ -237,9 +237,9 @@ GitHub Actions（免费 runner，构建不占服务器资源）
   ├─ JDK 17：./mvnw package -DskipTests → fat jar
   └─ rsync + ssh → 服务器（产物 + .env）
                             ▼
-服务器 2C2G（Docker Compose 编排，全部容器 mem_limit 上限约 1.7G）
+服务器 2C2G（Docker Compose 编排，全部容器 mem_limit 上限约 1.92G）
   nginx:1.27-alpine   128m    静态托管 dist + 反代 /api → backend:8080
-  backend（temurin17-jre） 768m  -Xms256m -Xmx512m，env 注入生产密钥
+  backend（temurin17-jre）1024m  -Xms256m -Xmx512m，env 注入生产密钥
   mysql:8.0           512m     调优后实际约 250MB，数据卷持久化
   redis:7-alpine      256m     maxmemory 128mb，关闭持久化（登录态可重建）
 ```

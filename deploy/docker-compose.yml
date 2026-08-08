@@ -4,8 +4,9 @@
 # 运行位置：/opt/ziyun-blog/（deploy.sh 负责同步产物与配置）
 # 使用：docker compose up -d --build
 #
-# 内存预算（2C2G 服务器，全部容器 mem_limit 上限合计约 1.7G）：
-#   nginx 128m + backend 768m + mysql 512m + redis 256m
+# 内存预算（2C2G 服务器，全部容器 mem_limit 上限合计约 1.92G）：
+#   nginx 128m + backend 1024m + mysql 512m + redis 256m
+#   mem_limit 是硬上限（超了才触发 OOM kill），实际常驻占用约 1.3~1.5G，
 #   剩余留给宿主机系统 + Docker daemon，建议再配 2G swap 保险。
 #
 # 依赖说明：
@@ -69,7 +70,7 @@ services:
     volumes:
       # 日志落盘（logback 写 /app/logs/blog-server.log，按天滚动）
       - ./logs:/app/logs
-    mem_limit: 768m
+    mem_limit: 1024m
     cpus: 1.5
     healthcheck:
       # 无 Actuator，用 bash /dev/tcp 探测 8080 端口
