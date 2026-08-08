@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, List } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
@@ -32,8 +32,6 @@ const toc = ref<TocItem[]>([])
 const activeIndex = ref(-1)
 /** 移动端目录抽屉开关（宽屏目录为右侧吸顶栏，窄屏改抽屉） */
 const tocDrawerVisible = ref(false)
-/** 渲染后的标题 DOM 元素（与 toc 按文本对齐；个别标题被 MdPreview 吞掉时为 undefined） */
-let headingElements: (HTMLElement | undefined)[] = []
 
 /** 从 Markdown 提取 h1-h4 标题：先剥离围栏代码块，避免 ``` 内 # 被误识别 */
 function parseToc(markdown: string): TocItem[] {
@@ -50,62 +48,35 @@ function parseToc(markdown: string): TocItem[] {
   return items
 }
 
-/** 文章渲染完成后收集标题 DOM，与 toc 按文档顺序 1:1 对齐。
- *  为什么不用「按文本匹配」：标题含行内格式（行内代码 `x`、加粗 **x**、
- *  链接 [x](url)）时，MdPreview 渲染出的 textContent 与 markdown 原文
- *  不一致（如 `npm i` 渲染成 "npm i"），精确匹配必然落空 ——
- *  点击该目录项时目标为 undefined，表现为「完全没有效果」。
- *  parseToc 与渲染顺序天然一致（代码块两侧都被剥离），按序对齐即可；
- *  个别标题被 MdPreview 吞掉时用同级就近匹配兜底，保证每个目录项
- *  都有可跳转的目标。 */
-async function buildToc() {
+/**
+ * 实时收集正文标题 DOM（点击/滚动时现查，不缓存）。
+ * 为什么不缓存：md-editor-v3 在代码高亮等异步任务完成后会重渲染
+ * 内容区，旧标题节点被替换脱离文档 —— 缓存引用 rect 全为 0，
+ * 点击时计算出的滚动目标为 0，表现为「跳转完全无效」。
+ * querySelectorAll 一次几十个节点，开销可忽略。
+ */
+function getHeadingElements(): HTMLElement[] {
+  const root = document.querySelector('.article-content')
+  if (!root) return []
+  return Array.from(root.querySelectorAll('h1, h2, h3, h4')) as HTMLElement[]
+}
+
+/** 文章渲染完成后构建目录列表（只依赖 markdown 文本，与 DOM 无关） */
+function buildToc() {
   if (!article.value) return
   toc.value = parseToc(article.value.content)
   activeIndex.value = -1
-  headingElements = []
-  if (toc.value.length === 0) return
-  await nextTick()
-  // MdPreview 渲染在 .article-content 容器内（class 唯一）
-  const root = document.querySelector('.article-content')
-  if (!root) return
-  const headings = Array.from(root.querySelectorAll('h1, h2, h3, h4')) as HTMLElement[]
-  const used = new Set<HTMLElement>()
-  headingElements = toc.value.map((item, i) => {
-    // 1) 文档顺序对齐：两侧一致时直接命中
-    const byIndex = headings[i]
-    if (byIndex && byIndex.tagName.toLowerCase() === `h${item.level}` && !used.has(byIndex)) {
-      used.add(byIndex)
-      return byIndex
-    }
-    // 2) 顺序错位（个别标题被吞）：同级就近取未使用项
-    const sameLevel = headings.find(
-      (el) => !used.has(el) && el.tagName.toLowerCase() === `h${item.level}`,
-    )
-    if (sameLevel) {
-      used.add(sameLevel)
-      return sameLevel
-    }
-    // 3) 最终兜底：任何未使用标题（保证目标非空）
-    const any = headings.find((el) => !used.has(el))
-    if (any) {
-      used.add(any)
-      return any
-    }
-    return undefined
-  })
 }
 
 /** 点击目录项：滚动到对应标题。
- *  手动计算绝对位置 + window.scrollTo，不用 scrollIntoView ——
- *  祖先元素残留 transform（如入场动画 fill:both 保留 matrix）时
- *  Chrome 对 scrollIntoView 的偏移计算会出错，导致滚动不到位甚至无效。
- *  滚动发起后做位移自检：若被浏览器吞掉（body 滚动锁未释放等）
- *  则瞬时补跳，杜绝「无效果」的静默失败。 */
+ *  实时现查标题元素（见 getHeadingElements），按目录索引直取；
+ *  手动计算绝对位置 + window.scrollTo（不用 scrollIntoView ——
+ *  祖先残留 transform 时 Chrome 会算错偏移）。
+ *  滚动后做位移自检：若既未到达目标、也未离开起点（滚动被吞，
+ *  如抽屉关闭期间 body 滚动锁未释放），则瞬时补跳，杜绝静默失败。 */
 function jumpTo(index: number) {
-  const el =
-    headingElements[index] ??
-    // 目录与标题错位时的兜底：就近取最后一个有效目标
-    [...headingElements].reverse().find((e): e is HTMLElement => !!e)
+  const headings = getHeadingElements()
+  const el = headings[index] ?? headings[headings.length - 1]
   if (!el) return
   activeIndex.value = index
   // 与 CSS scroll-margin-top 保持一致（见 .article-content :deep(h1~h4)）
@@ -114,18 +85,18 @@ function jumpTo(index: number) {
   const before = window.scrollY
   window.scrollTo({ top, behavior: 'smooth' })
   window.setTimeout(() => {
-    // 平滑滚动已进行（scrollY 已变）或本就到达：正常收尾；
-    // 纹丝未动且离目标较远：平滑滚动被吞，改瞬时滚动强制到达
-    if (window.scrollY === before && Math.abs(top - before) > 4) {
+    // 平滑滚动已到达/已在进行（scrollY 变化）则收尾；
+    // 纹丝未动且未到达：滚动被吞，改瞬时滚动强制到达
+    if (Math.abs(window.scrollY - top) > 4 && Math.abs(window.scrollY - before) < 4) {
       window.scrollTo({ top, behavior: 'auto' })
     }
   }, 650)
 }
 
 /** 移动端抽屉目录点击：先关抽屉，等 body 滚动锁释放后再跳转。
- *  el-drawer 打开期间会锁定 body 滚动（overflow: hidden），
- *  若在关闭动画完成前发起平滑滚动会被静默取消 —— 表现为
- *  「只象征性移动一点点」，故延迟到 @closed 回调再跳。 */
+ *  el-drawer 打开期间会锁定 body 滚动（overflow: hidden，且解锁
+ *  有 200ms 延迟），若在解锁前发起滚动会被静默取消 —— 表现为
+ *  「只象征性移动一点点」或「完全无效」。 */
 const pendingTocJump = ref<number | null>(null)
 
 function jumpToFromDrawer(index: number) {
@@ -134,19 +105,25 @@ function jumpToFromDrawer(index: number) {
 }
 
 function onDrawerClosed() {
-  if (pendingTocJump.value !== null) {
-    const idx = pendingTocJump.value
-    pendingTocJump.value = null
-    // @closed 事件与 body 滚动锁释放存在竞态：再等一拍确保可滚动
-    window.setTimeout(() => jumpTo(idx), 80)
+  if (pendingTocJump.value === null) return
+  const idx = pendingTocJump.value
+  pendingTocJump.value = null
+  // 轮询等待 body 滚动锁释放（EP 解锁有 200ms 延迟），再执行跳转
+  const waitForUnlock = () => {
+    if (document.body.classList.contains('el-popup-parent--hidden')) {
+      window.setTimeout(waitForUnlock, 50)
+      return
+    }
+    jumpTo(idx)
   }
+  waitForUnlock()
 }
 
 /** 滚动监听：高亮当前阅读位置（视口内最靠上的标题） */
 function onScroll() {
   let current = -1
-  headingElements.forEach((el, index) => {
-    if (el && el.getBoundingClientRect().top <= 80) current = index
+  getHeadingElements().forEach((el, index) => {
+    if (el.getBoundingClientRect().top <= 80) current = index
   })
   activeIndex.value = current
 }
@@ -195,13 +172,10 @@ function go(id: string) {
 onMounted(() => {
   loadDetail(route.params.id as string)
   window.addEventListener('scroll', onScroll, { passive: true })
-  // 文章内图片全部加载完成后重算目录对齐（图片加载会改变标题布局）
-  window.addEventListener('load', buildToc)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', onScroll)
-  window.removeEventListener('load', buildToc)
 })
 </script>
 
