@@ -1,7 +1,8 @@
 # 紫云博客 · 部署方案（Nginx + Spring Boot + MySQL + Redis）
 
 > 本文档说明如何把本项目部署到一台 Linux 服务器。
-> 架构：Nginx 托管前端静态文件并反向代理 `/api` 到后端；后端以 fat jar 运行。
+> **方案 A（推荐，第 9~12 章）：Docker Compose 全容器化 + GitHub Actions 自动部署。**
+> 方案 B（第 1~8 章）：Nginx 托管前端静态文件并反向代理 `/api` 到后端；后端以 fat jar 裸机运行（备选，已实测）。
 
 ## 1. 部署架构
 
@@ -220,3 +221,132 @@ cp -r old-dist /opt/blog-web
 cp blog-server.jar blog-server.jar.bak.$(date +%Y%m%d%H%M)
 sudo systemctl restart blog-server
 ```
+
+---
+
+# 方案 A：Docker Compose + GitHub Actions 自动部署（推荐）
+
+> 目标环境：Ubuntu 22.04，2C2G。push 到 GitHub main 分支即自动构建并部署。
+> 仓库内文件：`.github/workflows/deploy.yml`（CI/CD）+ `deploy/`（编排/配置/脚本）。
+
+## 9. 部署架构与内存预算
+
+```
+GitHub Actions（免费 runner，构建不占服务器资源）
+  ├─ Node 22：npm ci && npm run build → dist/
+  ├─ JDK 17：./mvnw package -DskipTests → fat jar
+  └─ rsync + ssh → 服务器（产物 + .env）
+                            ▼
+服务器 2C2G（Docker Compose 编排，全部容器 mem_limit 上限约 1.7G）
+  nginx:1.27-alpine   128m    静态托管 dist + 反代 /api → backend:8080
+  backend（temurin17-jre） 768m  -Xms256m -Xmx512m，env 注入生产密钥
+  mysql:8.0           512m     调优后实际约 250MB，数据卷持久化
+  redis:7-alpine      256m     maxmemory 128mb，关闭持久化（登录态可重建）
+```
+
+> 内存说明：Docker 本身不省内存（进程占用与裸机相同，还多约 100MB daemon
+> 开销），真正的空间来自调优 —— JVM 堆显式定死、MySQL 缓冲池 64M + 关
+> performance_schema、Redis maxmemory 限制。建议服务器额外配 2G swap。
+
+## 10. 服务器一次性准备（Ubuntu 22.04）
+
+```bash
+# 0) 换 apt 镜像源（大陆服务器必做，默认源访问 archive.ubuntu.com 很慢）
+cp /etc/apt/sources.list /etc/apt/sources.list.bak
+cat > /etc/apt/sources.list <<'EOF'
+deb https://mirrors.aliyun.com/ubuntu/ jammy main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-updates main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-backports main restricted universe multiverse
+deb https://mirrors.aliyun.com/ubuntu/ jammy-security main restricted universe multiverse
+EOF
+apt update
+
+# 1) 基础包 + rsync（部署传输依赖）
+apt install -y curl vim git rsync
+
+# 2) 安装 Docker + Compose 插件（官方源）
+curl -fsSL https://get.docker.com | sh
+systemctl enable --now docker
+
+# 2.1) Docker 镜像加速（否则 pull nginx/mysql 等镜像极慢；阿里云专属地址
+#     在 容器镜像服务控制台 -> 镜像加速器 页领取，格式 https://<你的>.mirror.aliyuncs.com）
+cat > /etc/docker/daemon.json <<'EOF'
+{
+  "registry-mirrors": [
+    "https://<你的专属地址>.mirror.aliyuncs.com",
+    "https://docker.m.daocloud.io"
+  ]
+}
+EOF
+systemctl restart docker
+
+# 3) 2G swap（2G 内存机器的保险丝）
+fallocate -l 2G /swapfile && chmod 600 /swapfile
+mkswap /swapfile && swapon /swapfile
+echo '/swapfile none swap sw 0 0' >> /etc/fstab
+
+# 4) 放行端口（SSH/HTTP/HTTPS）
+ufw allow 22/tcp && ufw allow 80/tcp && ufw allow 443/tcp && ufw enable
+
+# 5) 部署目录
+mkdir -p /opt/ziyun-blog/{backend,nginx,mysql,redis,logs,scripts,releases}
+
+# 6) 生成部署专用密钥对（私钥将配到 GitHub Secret）
+ssh-keygen -t ed25519 -C "github-actions" -f ~/.ssh/github_actions -N ""
+cat ~/.ssh/github_actions.pub >> ~/.ssh/authorized_keys
+chmod 600 ~/.ssh/authorized_keys
+cat ~/.ssh/github_actions        # 复制私钥全文，配到 SERVER_SSH_KEY
+```
+
+DNS：把 `ziyun.fun`（及 www）的 A 记录指向服务器公网 IP。
+
+## 11. GitHub 侧配置
+
+### 11.1 推送仓库
+
+```bash
+git remote add origin git@github.com:mangle8for/ziyun-blog.git
+git push -u origin main
+```
+
+### 11.2 添加 Secrets
+
+仓库 Settings → Secrets and variables → Actions → New repository secret：
+
+| Secret | 值 |
+| --- | --- |
+| `SERVER_HOST` | 服务器公网 IP |
+| `SERVER_PORT` | 22 |
+| `SERVER_USER` | root |
+| `SERVER_SSH_KEY` | 上一步生成的私钥全文（含 BEGIN/END 行） |
+| `DOMAIN` | ziyun.fun |
+| `MYSQL_ROOT_PASSWORD` | 部署脚本生成的强密码 |
+| `DB_PASSWORD` | 部署脚本生成的强密码 |
+| `JWT_SECRET` | 部署脚本生成的随机串（>= 32 字节） |
+
+> 对象存储：生产默认复用 `application.yml` 中的开发凭据（OSS 华北2 +
+> bucket `ziyun-webstudy-project`，默认值见 `deploy/docker-compose.yml`），
+> 无需配置 OSS Secrets。如需独立生产凭据，在服务器 `/opt/ziyun-blog/.env`
+> 中追加覆盖即可（`OSS_ACCESS_KEY_ID=` / `OSS_ACCESS_KEY_SECRET=` 等）。
+
+## 12. 首次部署与验证
+
+1. 推送 main → Actions 自动构建并部署（首次约 3~5 分钟，MySQL 数据卷为空时自动执行 `init.sql` 建库建表）
+2. 验证：
+   ```bash
+   curl -I http://ziyun.fun/                          # 前端 200
+   curl http://ziyun.fun/api/v1/categories            # 反代 + 后端 + 数据库 JSON
+   docker compose -f /opt/ziyun-blog/docker-compose.yml ps   # 全部 healthy
+   ```
+3. 浏览器登录（admin / admin123）→ **立即修改密码** → 实测写文章/传封面
+
+### 回滚
+
+- 部署失败：deploy.sh 自动回滚到上一版（`dist.prev` / `app.jar.prev`）并退出码 1
+- 手动回滚：历史版本在 `/opt/ziyun-blog/releases/<sha>/`，复制其中 dist/app.jar 到当前位并 `docker compose up -d --build`
+- 查看日志：`docker logs -f ziyun-backend`；应用日志落盘 `/opt/ziyun-blog/logs/blog-server.log`
+
+### HTTPS（后续）
+
+`deploy/nginx/blog.conf` 已预留 443 配置注释；用 certbot webroot 模式签发证书，
+挂载进 nginx 容器（放开 compose 里 443 端口与证书卷）即可，无需改动整体结构。

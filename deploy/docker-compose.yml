@@ -1,0 +1,139 @@
+# ============================================================
+# 紫云博客 · Docker Compose 编排（生产环境）
+#
+# 运行位置：/opt/ziyun-blog/（deploy.sh 负责同步产物与配置）
+# 使用：docker compose up -d --build
+#
+# 内存预算（2C2G 服务器，全部容器 mem_limit 上限合计约 1.7G）：
+#   nginx 128m + backend 768m + mysql 512m + redis 256m
+#   剩余留给宿主机系统 + Docker daemon，建议再配 2G swap 保险。
+#
+# 依赖说明：
+#   - .env 为本目录下的环境变量文件（由 GitHub Actions 部署时生成，
+#     内含 MySQL 密码 / JWT / OSS 凭据，已 .gitignore 不入库）
+#   - mysql 数据卷 mysql-data 持久化，重建容器不丢数据
+#   - init.sql 仅在 mysql 数据卷为空（首次启动）时自动执行
+# ============================================================
+
+services:
+  # ---------- Nginx：静态托管 + /api 反向代理 ----------
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ziyun-nginx
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # HTTPS 就绪后放开 443，并取消下方证书卷挂载注释
+      # - "443:443"
+    volumes:
+      - ./nginx/blog.conf:/etc/nginx/conf.d/blog.conf:ro
+      - ./dist:/usr/share/nginx/html:ro
+      # HTTPS：宿主机 certbot --webroot 模式签发后取消注释
+      # - /etc/letsencrypt:/etc/letsencrypt:ro
+    mem_limit: 128m
+    cpus: 0.5
+    depends_on:
+      - backend
+    networks:
+      - ziyun
+
+  # ---------- 后端：Spring Boot fat jar ----------
+  backend:
+    build: ./backend
+    image: ziyun/blog-server:latest
+    container_name: ziyun-backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+      SERVER_PORT: 8080
+      # 数据库 / Redis 走 compose 网络内服务名，不经宿主机端口
+      DB_HOST: mysql
+      DB_PORT: 3306
+      DB_NAME: ziyun_blog
+      DB_USERNAME: ${DB_USERNAME}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      # 生产密钥（缺失时应用直接启动失败，防止弱配置上线）
+      JWT_SECRET: ${JWT_SECRET}
+      # 对象存储：默认复用 application.yml 中的开发凭据（阿里云 OSS 华北2，
+      # bucket ziyun-webstudy-project）。如需独立生产凭据，在服务器 .env 中
+      # 覆盖 OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET 即可，无需改代码。
+      STORAGE_TYPE: ${STORAGE_TYPE:-oss}
+      OSS_ENDPOINT: ${OSS_ENDPOINT:-https://oss-cn-beijing.aliyuncs.com}
+      OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:-LTAI5t5t5N2ApfVUeqsJwj5W}
+      OSS_ACCESS_KEY_SECRET: ${OSS_ACCESS_KEY_SECRET:-oRXVhydGXkXKECUyEUE9WhfO6DLpXm}
+      OSS_BUCKET: ${OSS_BUCKET:-ziyun-webstudy-project}
+      OSS_BASE_PATH: ${OSS_BASE_PATH:-blog}
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-}
+    volumes:
+      # 日志落盘（logback 写 /app/logs/blog-server.log，按天滚动）
+      - ./logs:/app/logs
+    mem_limit: 768m
+    cpus: 1.5
+    healthcheck:
+      # 无 Actuator，用 bash /dev/tcp 探测 8080 端口
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/127.0.0.1/8080'"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 40s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - ziyun
+
+  # ---------- MySQL 8：业务数据（小内存调优见 mysql/my.cnf） ----------
+  mysql:
+    image: mysql:8.0
+    container_name: ziyun-mysql
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      MYSQL_DATABASE: ziyun_blog
+      MYSQL_USER: ${DB_USERNAME}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+      TZ: Asia/Shanghai
+    volumes:
+      - mysql-data:/var/lib/mysql
+      - ./mysql/my.cnf:/etc/mysql/conf.d/ziyun.cnf:ro
+      # 仅首次启动（空数据卷）自动执行建库建表 + 预置管理员
+      - ./mysql/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    mem_limit: 512m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - ziyun
+
+  # ---------- Redis 7：登录态 / 限流 ----------
+  redis:
+    image: redis:7-alpine
+    container_name: ziyun-redis
+    restart: unless-stopped
+    command: ["redis-server", "/usr/local/etc/redis/redis.conf"]
+    volumes:
+      - ./redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - ziyun
+
+volumes:
+  mysql-data:
+
+networks:
+  ziyun:
+    driver: bridge

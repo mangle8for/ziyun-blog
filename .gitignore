@@ -84,6 +84,9 @@ build/
 # ---------- 环境与配置文件（绝不入库） ----------
 # 本地环境变量覆盖文件（dev 用 .env.development.local 可覆盖公共配置）
 *.local
+# 部署环境变量：服务器 .env 由 GitHub Actions 根据 Secrets 生成，
+# 本文件只是模板（deploy/.env.example），真实值绝不入库
+deploy/.env
 # 后端运行时产物/个人配置
 *.pid
 *.seed
