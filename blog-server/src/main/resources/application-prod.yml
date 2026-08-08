@@ -8,7 +8,11 @@ server:
 spring:
   # 生产必须显式注入所有密钥，禁止使用公共配置里的默认回退值
   datasource:
-    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:ziyun_blog}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&serverTimezone=Asia/Shanghai&useSSL=true&allowPublicKeyRetrieval=true
+    # sessionVariables 强制每个 JDBC 会话使用 utf8mb4：
+    # 即使 Connector/J 与服务器协商出 latin1（历史踩坑：服务器端
+    # character_set_server 正常为 utf8mb4，但 JDBC 会话被协商成 latin1，
+    # 导致中文数据按 latin1 解码成乱码），也会在连接建立后被强制覆盖。
+    url: jdbc:mysql://${DB_HOST:localhost}:${DB_PORT:3306}/${DB_NAME:ziyun_blog}?useUnicode=true&characterEncoding=UTF-8&connectionCollation=utf8mb4_unicode_ci&sessionVariables=character_set_client=utf8mb4,character_set_connection=utf8mb4,character_set_results=utf8mb4&serverTimezone=Asia/Shanghai&useSSL=true&allowPublicKeyRetrieval=true
     username: ${DB_USERNAME:root}
     password: ${DB_PASSWORD}
   data:
