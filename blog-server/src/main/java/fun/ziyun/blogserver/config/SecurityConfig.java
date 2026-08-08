@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import fun.ziyun.blogserver.common.Result;
 import fun.ziyun.blogserver.common.ResultCode;
 import fun.ziyun.blogserver.filter.JwtAuthenticationFilter;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
@@ -108,21 +109,52 @@ public class SecurityConfig {
 
     /**
      * CORS 配置源：从 blog.security.cors-allowed-origins 读取白名单。
-     * 列表为空时不注册任何允许来源 —— 浏览器端未配置 origin 的预检
-     * 请求不会通过，等同「未开启 CORS」（同域部署的默认预期）。
+     *
+     * <p>关键设计（同源请求必须放行）：</p>
+     * <pre>
+     * 1. 浏览器（Chrome 等）对同源 POST/PUT/DELETE 也会携带 Origin 头；
+     *    Spring Security 的 CorsFilter 只要拿到非空 Origin 就按跨源校验，
+     *    若白名单为空（同域部署的默认形态），同源登录请求会被误判为
+     *    「跨源且未授权」而 403（响应 Invalid CORS request）。
+     * 2. 因此这里对「非 CORS 请求（无 Origin）」与「同源请求」直接返回 null，
+     *    Security CorsFilter 收到 null 配置即放行（等价于不做 CORS 处理）；
+     *    只有真正的跨源请求才套用白名单校验。
+     * 3. 同源判定依赖 nginx 转发的 X-Forwarded-Proto + Host（见 blog.conf），
+     *    否则 HTTPS 反代后 request 的原始 scheme 是 http，会误判为跨源。
+     * </pre>
      */
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowedOrigins(securityProperties.getCorsAllowedOrigins());
-        config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-        config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE));
-        // 允许携带 Authorization 头（JWT 认证依赖），预检缓存 1 小时
-        config.setAllowCredentials(true);
-        config.setMaxAge(3600L);
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-        source.registerCorsConfiguration("/api/**", config);
-        return source;
+        return request -> {
+            String origin = request.getHeader(HttpHeaders.ORIGIN);
+            if (origin == null || isSameOrigin(request, origin)) {
+                return null;
+            }
+            CorsConfiguration config = new CorsConfiguration();
+            config.setAllowedOrigins(securityProperties.getCorsAllowedOrigins());
+            config.setAllowedMethods(List.of("GET", "POST", "PUT", "DELETE", "OPTIONS"));
+            config.setAllowedHeaders(List.of(HttpHeaders.AUTHORIZATION, HttpHeaders.CONTENT_TYPE));
+            config.setAllowCredentials(true);
+            config.setMaxAge(3600L);
+            return config;
+        };
+    }
+
+    /** 同源判定：用「转发协议 + Host」拼出期望 Origin 与请求 Origin 比对 */
+    private boolean isSameOrigin(HttpServletRequest request, String origin) {
+        String scheme = request.getHeader("X-Forwarded-Proto");
+        if (scheme == null || scheme.isBlank()) {
+            scheme = request.getScheme();
+        }
+        String host = request.getHeader(HttpHeaders.HOST);
+        if (host == null || host.isBlank()) {
+            host = request.getServerName();
+            int port = request.getServerPort();
+            if ((request.isSecure() && port != 443) || (!request.isSecure() && port != 80)) {
+                host += ":" + port;
+            }
+        }
+        return origin.equalsIgnoreCase(scheme + "://" + host);
     }
 
     /** 密码编码器：Bean 声明后 Spring Security 自动用于密码比对 */

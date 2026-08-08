@@ -50,9 +50,14 @@ function parseToc(markdown: string): TocItem[] {
   return items
 }
 
-/** 文章渲染完成后收集标题 DOM，与 toc 按文本一一对齐。
- *  MdPreview 可能吞掉个别标题（如 HTML 块内的 #），导致 DOM 数量
- *  与正则解析数量错位；按文本匹配可避免「点第 N 项跳到别的标题」。 */
+/** 文章渲染完成后收集标题 DOM，与 toc 按文档顺序 1:1 对齐。
+ *  为什么不用「按文本匹配」：标题含行内格式（行内代码 `x`、加粗 **x**、
+ *  链接 [x](url)）时，MdPreview 渲染出的 textContent 与 markdown 原文
+ *  不一致（如 `npm i` 渲染成 "npm i"），精确匹配必然落空 ——
+ *  点击该目录项时目标为 undefined，表现为「完全没有效果」。
+ *  parseToc 与渲染顺序天然一致（代码块两侧都被剥离），按序对齐即可；
+ *  个别标题被 MdPreview 吞掉时用同级就近匹配兜底，保证每个目录项
+ *  都有可跳转的目标。 */
 async function buildToc() {
   if (!article.value) return
   toc.value = parseToc(article.value.content)
@@ -64,24 +69,57 @@ async function buildToc() {
   const root = document.querySelector('.article-content')
   if (!root) return
   const headings = Array.from(root.querySelectorAll('h1, h2, h3, h4')) as HTMLElement[]
-  const remaining = headings.slice()
-  // 数组长度与 toc 保持一一对应；找不到文本时退回按序取下一个
-  headingElements = toc.value.map((item) => {
-    const idx = remaining.findIndex((el) => el.textContent?.trim() === item.text)
-    if (idx >= 0) return remaining.splice(idx, 1)[0]
-    return remaining.shift()
+  const used = new Set<HTMLElement>()
+  headingElements = toc.value.map((item, i) => {
+    // 1) 文档顺序对齐：两侧一致时直接命中
+    const byIndex = headings[i]
+    if (byIndex && byIndex.tagName.toLowerCase() === `h${item.level}` && !used.has(byIndex)) {
+      used.add(byIndex)
+      return byIndex
+    }
+    // 2) 顺序错位（个别标题被吞）：同级就近取未使用项
+    const sameLevel = headings.find(
+      (el) => !used.has(el) && el.tagName.toLowerCase() === `h${item.level}`,
+    )
+    if (sameLevel) {
+      used.add(sameLevel)
+      return sameLevel
+    }
+    // 3) 最终兜底：任何未使用标题（保证目标非空）
+    const any = headings.find((el) => !used.has(el))
+    if (any) {
+      used.add(any)
+      return any
+    }
+    return undefined
   })
 }
 
 /** 点击目录项：滚动到对应标题。
- *  用 scrollIntoView + 标题的 scroll-margin-top（见样式）定位，
- *  相比手算 window.scrollTo 偏移更可靠 —— 不受滚动容器与
- *  页面布局（图片加载后的高度变化）影响。 */
+ *  手动计算绝对位置 + window.scrollTo，不用 scrollIntoView ——
+ *  祖先元素残留 transform（如入场动画 fill:both 保留 matrix）时
+ *  Chrome 对 scrollIntoView 的偏移计算会出错，导致滚动不到位甚至无效。
+ *  滚动发起后做位移自检：若被浏览器吞掉（body 滚动锁未释放等）
+ *  则瞬时补跳，杜绝「无效果」的静默失败。 */
 function jumpTo(index: number) {
-  const el = headingElements[index]
+  const el =
+    headingElements[index] ??
+    // 目录与标题错位时的兜底：就近取最后一个有效目标
+    [...headingElements].reverse().find((e): e is HTMLElement => !!e)
   if (!el) return
-  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   activeIndex.value = index
+  // 与 CSS scroll-margin-top 保持一致（见 .article-content :deep(h1~h4)）
+  const scrollMargin = parseFloat(getComputedStyle(el).scrollMarginTop) || 0
+  const top = Math.max(el.getBoundingClientRect().top + window.scrollY - scrollMargin, 0)
+  const before = window.scrollY
+  window.scrollTo({ top, behavior: 'smooth' })
+  window.setTimeout(() => {
+    // 平滑滚动已进行（scrollY 已变）或本就到达：正常收尾；
+    // 纹丝未动且离目标较远：平滑滚动被吞，改瞬时滚动强制到达
+    if (window.scrollY === before && Math.abs(top - before) > 4) {
+      window.scrollTo({ top, behavior: 'auto' })
+    }
+  }, 650)
 }
 
 /** 移动端抽屉目录点击：先关抽屉，等 body 滚动锁释放后再跳转。
@@ -97,8 +135,10 @@ function jumpToFromDrawer(index: number) {
 
 function onDrawerClosed() {
   if (pendingTocJump.value !== null) {
-    jumpTo(pendingTocJump.value)
+    const idx = pendingTocJump.value
     pendingTocJump.value = null
+    // @closed 事件与 body 滚动锁释放存在竞态：再等一拍确保可滚动
+    window.setTimeout(() => jumpTo(idx), 80)
   }
 }
 
@@ -405,7 +445,9 @@ onBeforeUnmount(() => {
 }
 
 .article-card {
-  animation: card-in 0.5s ease both;
+  /* fill: backwards —— 动画结束后 transform 归 none：
+     残留 matrix 会让 Chrome 对 scrollIntoView/fixed 定位算错偏移 */
+  animation: card-in 0.5s ease backwards;
 }
 
 @keyframes card-in {

@@ -450,8 +450,9 @@ onBeforeUnmount(() => {
 .article-card {
   cursor: pointer;
   width: 100%;
-  /* 卡片入场浮起动画 */
-  animation: card-in 0.5s ease both;
+  /* 入场浮起动画：fill: backwards 让动画结束后 transform 归 none，
+     避免残留 matrix 干扰 fixed 定位与滚动偏移计算 */
+  animation: card-in 0.5s ease backwards;
 }
 
 @keyframes card-in {

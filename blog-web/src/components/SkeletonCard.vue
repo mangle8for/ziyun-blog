@@ -24,7 +24,7 @@ withDefaults(defineProps<{ index?: number }>(), { index: 0 })
   border: 1px solid var(--border-color);
   border-radius: 14px;
   padding: 22px 26px;
-  animation: sk-in 0.4s ease both;
+  animation: sk-in 0.4s ease backwards;
 }
 
 @keyframes sk-in {
