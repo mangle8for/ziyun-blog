@@ -88,12 +88,17 @@ docker compose up -d --force-recreate nginx
 # ---------- 7. 健康检查（API 链路优先，最多等 180s） ----------
 # 说明：只以 /api 链路（nginx 反代 -> backend -> MySQL）为成功标准；
 # 前端静态文件 403/404 属于 dist 权限/时序问题，不阻断本次部署（回滚无意义）。
-echo "[deploy] 健康检查 http://${DOMAIN}/api/v1/categories（最多 180s）"
+#
+# HTTPS 全站启用后，80 端口只做 ACME 验证 + 301 跳转（见 blog.conf），
+# 走 http 永远拿到 301，健康检查必须打到 443。
+# --resolve 强制本机建连（不绕公网），SNI 与证书校验仍按真实域名进行。
+echo "[deploy] 健康检查 https://${DOMAIN}/api/v1/categories（最多 180s）"
 DEPLOY_OK=0
 for i in $(seq 1 36); do
     # -w 打印 HTTP 状态码演进：502=后端未就绪 / 200=链路通 / 403=安全拦截或静态权限
-    API_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${DOMAIN}" \
-        "http://127.0.0.1/api/v1/categories" 2>/dev/null || echo "000")
+    API_CODE=$(curl -s -o /dev/null -w "%{http_code}" \
+        --resolve "${DOMAIN}:443:127.0.0.1" \
+        "https://${DOMAIN}/api/v1/categories" 2>/dev/null || echo "000")
     if [[ "${API_CODE}" == "200" ]]; then
         DEPLOY_OK=1
         break
@@ -103,7 +108,7 @@ for i in $(seq 1 36); do
 done
 
 if [[ "${DEPLOY_OK}" -eq 1 ]]; then
-    if ! curl -fsS -o /dev/null "http://127.0.0.1/"; then
+    if ! curl -fsS -o /dev/null --resolve "${DOMAIN}:443:127.0.0.1" "https://${DOMAIN}/"; then
         echo "[deploy] 警告: 前端静态页不可访问（不阻断），请检查 /opt/ziyun-blog/dist 内容与权限"
     fi
 fi
