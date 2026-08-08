@@ -38,6 +38,14 @@
 		<mybatis-plus.version>3.5.7</mybatis-plus.version>
 		<minio.version>8.5.17</minio.version>
 		<jjwt.version>0.12.6</jjwt.version>
+		<!--
+		  锁定 mysql-connector-j 8.4.0（LTS）：
+		  Boot 3.5.x 默认管理 9.x，而 9.x 的连接字符集协商存在坑
+		  （服务器端 utf8mb4 正常，Connector/J 内部解码器却按 latin1 定死，
+		  sessionVariables/characterEncoding 均无法纠正，导致中文乱码）。
+		  8.4.0 行为成熟，配合 characterEncoding=UTF-8 稳定走 utf8mb4。
+		-->
+		<mysql.version>8.4.0</mysql.version>
 	</properties>
 
 	<dependencies>

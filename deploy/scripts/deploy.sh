@@ -67,9 +67,12 @@ if [[ -f "${APP_DIR}/backend/app.jar" ]]; then
 fi
 
 # ---------- 5. 应用新版本 ----------
-rm -rf "${APP_DIR}/dist"
-cp -rf "${RELEASE_DIR}/dist" "${APP_DIR}/dist"
-cp -f  "${RELEASE_DIR}/app.jar" "${APP_DIR}/backend/app.jar"
+# 注意：dist 必须用 rsync 原地同步（保留目录 inode）。
+# 若 rm -rf 重建目录，nginx 容器的 bind mount 会指向已删除的旧 inode，
+# 容器内挂载点变空目录 -> 前端 403（Docker 挂载在容器创建时绑定路径）。
+mkdir -p "${APP_DIR}/dist"
+rsync -a --delete "${RELEASE_DIR}/dist/" "${APP_DIR}/dist/"
+cp -f "${RELEASE_DIR}/app.jar" "${APP_DIR}/backend/app.jar"
 
 # ---------- 6. 启动 / 更新容器（后端 jar 重新打进镜像） ----------
 echo "[deploy] docker compose up -d --build"
@@ -100,8 +103,10 @@ fi
 
 if [[ "${DEPLOY_OK}" -ne 1 ]]; then
     echo "[deploy] 健康检查失败，自动回滚到上一版本" >&2
-    rm -rf "${APP_DIR}/dist"
-    [[ -d "${APP_DIR}/dist.prev" ]] && cp -rf "${APP_DIR}/dist.prev" "${APP_DIR}/dist"
+    mkdir -p "${APP_DIR}/dist"
+    if [[ -d "${APP_DIR}/dist.prev" ]]; then
+        rsync -a --delete "${APP_DIR}/dist.prev/" "${APP_DIR}/dist/"
+    fi
     [[ -f "${APP_DIR}/backend/app.jar.prev" ]] && cp -f "${APP_DIR}/backend/app.jar.prev" "${APP_DIR}/backend/app.jar"
     docker compose up -d --build backend nginx
     exit 1
