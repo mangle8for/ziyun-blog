@@ -21,6 +21,13 @@ const router = createRouter({
         { path: 'categories', name: 'categories', component: () => import('@/views/CategoryView.vue') },
         { path: 'tags', name: 'tags', component: () => import('@/views/TagView.vue') },
         { path: 'about', name: 'about', component: () => import('@/views/AboutView.vue') },
+        // 个人中心：需登录（任意角色），独立于管理后台
+        {
+          path: 'profile',
+          name: 'profile',
+          component: () => import('@/views/ProfileView.vue'),
+          meta: { requiresAuth: true },
+        },
       ],
     },
     {
@@ -39,6 +46,7 @@ const router = createRouter({
         { path: 'articles/:id/edit', name: 'admin-article-edit', component: () => import('@/views/admin/ArticleEditView.vue') },
         { path: 'categories', name: 'admin-categories', component: () => import('@/views/admin/CategoryManageView.vue') },
         { path: 'tags', name: 'admin-tags', component: () => import('@/views/admin/TagManageView.vue') },
+        { path: 'users', name: 'admin-users', component: () => import('@/views/admin/UserManageView.vue') },
       ],
     },
     // 兜底：未知路径回首页

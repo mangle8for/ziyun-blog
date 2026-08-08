@@ -51,6 +51,7 @@ async function onSubmit() {
         <span class="brand-name">紫云博客</span>
       </div>
       <p class="login-sub">登录以进入管理后台</p>
+      <p class="login-future">后续将支持手机号验证码注册游客账号、评论与 @Async 异步通知</p>
 
       <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="onSubmit">
         <el-form-item prop="username">
@@ -132,6 +133,14 @@ async function onSubmit() {
   margin: 0 0 28px;
   font-size: 13px;
   letter-spacing: 1px;
+}
+
+.login-future {
+  color: var(--text-muted);
+  margin: -14px 0 24px;
+  font-size: 12px;
+  line-height: 1.6;
+  opacity: 0.85;
 }
 
 .submit-btn {

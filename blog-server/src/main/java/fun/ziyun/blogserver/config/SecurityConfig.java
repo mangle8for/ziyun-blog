@@ -77,6 +77,12 @@ public class SecurityConfig {
                         // me/logout 需要「已登录」即可（任何角色，不止 ADMIN）——
                         // 注意必须声明在 GET 公开规则之前，先匹配先生效
                         .requestMatchers("/api/v1/auth/me", "/api/v1/auth/logout").authenticated()
+                        // 个人信息/改密：任意登录用户（PUT 默认会被 anyRequest 的 ADMIN 拦住，
+                        // 故显式声明为 authenticated；写操作中仅这两条对普通用户开放）
+                        .requestMatchers(HttpMethod.PUT,
+                                "/api/v1/auth/profile", "/api/v1/auth/password").authenticated()
+                        // 用户管理接口：仅管理员（GET /api/v1/users 不能落入下方 GET 公开规则）
+                        .requestMatchers("/api/v1/users/**").hasRole("ADMIN")
                         // GET 公开接口（文章/分类/标签浏览）
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()
                         // 其余所有请求需要管理员权限（写操作/上传）

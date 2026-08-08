@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.core.userdetails.UserDetailsService;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.stereotype.Service;
 
 /**
@@ -40,6 +41,12 @@ public class UserDetailsServiceImpl implements UserDetailsService {
             // 统一提示「用户名或密码错误」，不区分用户是否存在，
             // 避免攻击者通过报错信息枚举有效用户名
             throw new UsernameNotFoundException("用户名或密码错误");
+        }
+        // 被管理员禁用的账号（status=0）：禁止登录。
+        // 抛 DisabledException 而非伪装「用户名或密码错误」：
+        // 账号本身合法存在，明确告知便于用户联系管理员解禁。
+        if (user.getStatus() != null && user.getStatus() == 0) {
+            throw new DisabledException("账号已被禁用，请联系管理员");
         }
         return new AuthUser(user.getId(), user.getUsername(), user.getPassword(), user.getRole());
     }

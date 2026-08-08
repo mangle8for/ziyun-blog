@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import fun.ziyun.blogserver.common.ResultCode;
 import fun.ziyun.blogserver.dto.LoginDTO;
 import fun.ziyun.blogserver.dto.RegisterDTO;
+import fun.ziyun.blogserver.dto.UpdatePasswordDTO;
+import fun.ziyun.blogserver.dto.UpdateProfileDTO;
 import fun.ziyun.blogserver.entity.User;
 import fun.ziyun.blogserver.exception.BusinessException;
 import fun.ziyun.blogserver.mapper.UserMapper;
@@ -20,12 +22,15 @@ import org.springframework.data.redis.RedisConnectionFailureException;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.concurrent.TimeUnit;
+import java.util.regex.Pattern;
 
 /**
  * 认证服务实现。
@@ -110,6 +115,10 @@ public class AuthServiceImpl implements AuthService {
             // 同时记录一次失败，累计达阈值触发锁定
             recordLoginFailure(dto.getUsername());
             throw new BusinessException(ResultCode.UNAUTHORIZED, "用户名或密码错误");
+        } catch (DisabledException e) {
+            // 账号被管理员禁用（UserDetailsServiceImpl 抛 DisabledException）：
+            // 明确提示原因，不参与失败计数（账号本身是合法存在的）
+            throw new BusinessException(ResultCode.FORBIDDEN, "账号已被禁用，请联系管理员");
         }
 
         // 登录成功：清除失败计数与锁定标记
@@ -145,9 +154,74 @@ public class AuthServiceImpl implements AuthService {
         return toUserVO(user);
     }
 
+    @Override
+    public UserVO updateProfile(Long userId, UpdateProfileDTO dto) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户不存在");
+        }
+
+        // 昵称：非空才更新（空串视为未提交）；昵称回退用户名由前端兜底
+        if (StringUtils.hasText(dto.getNickname())) {
+            user.setNickname(dto.getNickname().trim());
+        }
+        // 邮箱：空串/空白 = 清空；非空时校验格式（可空邮箱）
+        if (dto.getEmail() != null) {
+            String email = dto.getEmail().trim();
+            if (email.isEmpty()) {
+                user.setEmail(null);
+            } else {
+                if (!EMAIL_PATTERN.matcher(email).matches()) {
+                    throw new BusinessException(ResultCode.BAD_REQUEST, "邮箱格式不正确");
+                }
+                user.setEmail(email);
+            }
+        }
+        // 头像：非空才更新
+        if (StringUtils.hasText(dto.getAvatar())) {
+            user.setAvatar(dto.getAvatar().trim());
+        }
+
+        userMapper.updateById(user);
+        log.info("用户 {} 更新了个人资料", userId);
+        return toUserVO(user);
+    }
+
+    @Override
+    public void updatePassword(Long userId, UpdatePasswordDTO dto) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户不存在");
+        }
+
+        // 1. 必须校验原密码：防止已登录会话被他人冒用直接改密
+        if (!passwordEncoder.matches(dto.getOldPassword(), user.getPassword())) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "原密码错误");
+        }
+        // 2. 新密码不能与原密码相同
+        if (passwordEncoder.matches(dto.getNewPassword(), user.getPassword())) {
+            throw new BusinessException(ResultCode.BAD_REQUEST, "新密码不能与原密码相同");
+        }
+
+        // 3. 更新 BCrypt 哈希（每次随机盐，密文无规律）
+        User update = new User();
+        update.setId(userId);
+        update.setPassword(passwordEncoder.encode(dto.getNewPassword()));
+        userMapper.updateById(update);
+
+        // 4. 安全收尾：清除 Redis 登录态，所有会话（含当前）强制重新登录。
+        //    防止「旧密码继续可用/其他设备未失效」——改密即全局下线。
+        stringRedisTemplate.delete(LOGIN_TOKEN_KEY + userId);
+        log.info("用户 {} 修改了密码，所有会话已失效", userId);
+    }
+
+    /** 简单邮箱格式校验（可空字段，非空时严格校验） */
+    private static final Pattern EMAIL_PATTERN =
+            Pattern.compile("^[\\w.%+-]+@[\\w.-]+\\.[A-Za-z]{2,}$");
+
     private UserVO toUserVO(User user) {
         UserVO vo = new UserVO();
-        // 只拷贝展示字段（UserVO 无 password/email，天然隔离）
+        // 只拷贝展示字段（password 在实体层 @JsonIgnore 且 VO 无该字段，双层隔离）
         BeanUtils.copyProperties(user, vo);
         return vo;
     }

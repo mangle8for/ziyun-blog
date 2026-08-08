@@ -38,13 +38,53 @@ export interface PageResult<T> {
 /** 用户角色：0-普通用户 1-管理员（对齐后端 TINYINT） */
 export type UserRole = 0 | 1
 
-/** 登录用户信息，对齐后端 UserVO（不含 password/email） */
+/** 登录用户信息，对齐后端 UserVO（不含 password；email 仅本人可见） */
 export interface User {
   id: string
   username: string
   nickname?: string
   avatar?: string
+  email?: string
   role: UserRole
+}
+
+/** 用户管理列表项，对齐后端 UserAdminVO（仅管理员接口返回） */
+export interface UserAdmin {
+  id: string
+  username: string
+  nickname?: string
+  avatar?: string
+  email?: string
+  role: UserRole
+  /** 状态：0-禁用 1-正常 */
+  status: 0 | 1
+  createTime: string
+  updateTime: string
+}
+
+/** 用户管理分页查询参数 */
+export interface UserManageQuery {
+  page?: number
+  size?: number
+  keyword?: string
+}
+
+/** 用户状态切换载荷，对齐后端 StatusUpdateDTO */
+export interface UserStatusPayload {
+  status: 0 | 1
+}
+
+/** 修改个人信息载荷，对齐后端 UpdateProfileDTO */
+export interface ProfilePayload {
+  nickname?: string
+  email?: string
+  avatar?: string
+}
+
+/** 修改密码载荷，对齐后端 UpdatePasswordDTO */
+export interface UpdatePasswordPayload {
+  oldPassword: string
+  newPassword: string
 }
 
 /** 登录表单 */

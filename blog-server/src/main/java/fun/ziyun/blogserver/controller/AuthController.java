@@ -3,6 +3,8 @@ package fun.ziyun.blogserver.controller;
 import fun.ziyun.blogserver.common.Result;
 import fun.ziyun.blogserver.dto.LoginDTO;
 import fun.ziyun.blogserver.dto.RegisterDTO;
+import fun.ziyun.blogserver.dto.UpdatePasswordDTO;
+import fun.ziyun.blogserver.dto.UpdateProfileDTO;
 import fun.ziyun.blogserver.security.AuthUser;
 import fun.ziyun.blogserver.service.AuthService;
 import fun.ziyun.blogserver.vo.LoginVO;
@@ -12,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
@@ -60,5 +63,25 @@ public class AuthController {
     public Result<UserVO> me(Authentication authentication) {
         AuthUser authUser = (AuthUser) authentication.getPrincipal();
         return Result.ok(authService.getCurrentUser(authUser.getId()));
+    }
+
+    /** 修改个人信息（本人，任意登录角色）：返回更新后的用户信息 */
+    @PutMapping("/profile")
+    public Result<UserVO> updateProfile(@RequestBody @Valid UpdateProfileDTO dto,
+                                        Authentication authentication) {
+        AuthUser authUser = (AuthUser) authentication.getPrincipal();
+        return Result.ok(authService.updateProfile(authUser.getId(), dto));
+    }
+
+    /**
+     * 修改密码（本人）：校验原密码 + 更新哈希 + 清除登录态。
+     * 成功后当前与历史所有会话全部失效，前端需引导重新登录。
+     */
+    @PutMapping("/password")
+    public Result<Void> updatePassword(@RequestBody @Valid UpdatePasswordDTO dto,
+                                       Authentication authentication) {
+        AuthUser authUser = (AuthUser) authentication.getPrincipal();
+        authService.updatePassword(authUser.getId(), dto);
+        return Result.ok();
     }
 }

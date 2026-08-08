@@ -52,13 +52,24 @@ const aboutContent = `# 关于本站
   background: transparent;
 }
 
-:deep(.md-editor-preview) {
+/*
+  文本块与卡片背景边界之间留出呼吸空间，避免内容贴边。
+  注意：MdPreview 的 previewOnly 模式会强制 preview 内边距为 0
+  （.md-editor-previewOnly .md-editor-preview { padding-block: 0; padding-inline: 0 }），
+  故这里必须用同样的双类选择器提高特异性才能覆盖。
+*/
+:deep(.md-editor-previewOnly .md-editor-preview) {
   color: var(--text-main);
   background: transparent;
-  /* 文本块与卡片背景边界之间留出呼吸空间，避免内容贴边 */
-  padding: 24px 28px;
+  padding: 40px 48px;
   line-height: 1.9;
   font-size: 15px;
+}
+
+@media (max-width: 768px) {
+  :deep(.md-editor-previewOnly .md-editor-preview) {
+    padding: 24px 20px;
+  }
 }
 
 :deep(.md-editor-preview h1),
