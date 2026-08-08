@@ -75,20 +75,28 @@ cp -f  "${RELEASE_DIR}/app.jar" "${APP_DIR}/backend/app.jar"
 echo "[deploy] docker compose up -d --build"
 docker compose up -d --build --remove-orphans
 
-# ---------- 7. 健康检查（nginx 前端 + 反代 API 全链路，最多等 120s） ----------
-echo "[deploy] 健康检查 http://${DOMAIN}/"
+# ---------- 7. 健康检查（API 链路优先，最多等 180s） ----------
+# 说明：只以 /api 链路（nginx 反代 -> backend -> MySQL）为成功标准；
+# 前端静态文件 403/404 属于 dist 权限/时序问题，不阻断本次部署（回滚无意义）。
+echo "[deploy] 健康检查 http://${DOMAIN}/api/v1/categories（最多 180s）"
 DEPLOY_OK=0
-for i in $(seq 1 24); do
-    # 1) nginx 前端静态页可访问
-    if curl -fsS -o /dev/null "http://127.0.0.1/"; then
-        # 2) /api 反代 + 后端 + MySQL 全链路（categories 为公开 GET 接口）
-        if curl -fsS -o /dev/null -H "Host: ${DOMAIN}" "http://127.0.0.1/api/v1/categories"; then
-            DEPLOY_OK=1
-            break
-        fi
+for i in $(seq 1 36); do
+    # -w 打印 HTTP 状态码演进：502=后端未就绪 / 200=链路通 / 403=安全拦截或静态权限
+    API_CODE=$(curl -s -o /dev/null -w "%{http_code}" -H "Host: ${DOMAIN}" \
+        "http://127.0.0.1/api/v1/categories" 2>/dev/null || echo "000")
+    if [[ "${API_CODE}" == "200" ]]; then
+        DEPLOY_OK=1
+        break
     fi
+    echo "[deploy] 等待后端就绪... (HTTP ${API_CODE})"
     sleep 5
 done
+
+if [[ "${DEPLOY_OK}" -eq 1 ]]; then
+    if ! curl -fsS -o /dev/null "http://127.0.0.1/"; then
+        echo "[deploy] 警告: 前端静态页不可访问（不阻断），请检查 /opt/ziyun-blog/dist 内容与权限"
+    fi
+fi
 
 if [[ "${DEPLOY_OK}" -ne 1 ]]; then
     echo "[deploy] 健康检查失败，自动回滚到上一版本" >&2
