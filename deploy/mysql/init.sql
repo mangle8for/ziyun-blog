@@ -25,6 +25,10 @@
 --      ⚠️ 生产环境严禁执行 DROP，请用增量迁移脚本（如 Flyway/Liquibase）。
 -- ============================================================
 
+-- ⚠️ 首行 SET NAMES 必须保留：官方 MySQL 镜像用 mysql CLI（默认 latin1 会话）
+--    执行本脚本，不强制 utf8mb4 会导致中文「双重编码」入库（应用读取乱码）
+SET NAMES utf8mb4;
+
 -- ---------- 1. 建库 ----------
 CREATE DATABASE IF NOT EXISTS `ziyun_blog`
     DEFAULT CHARACTER SET utf8mb4
