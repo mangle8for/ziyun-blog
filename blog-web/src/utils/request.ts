@@ -35,6 +35,15 @@ function handleUnauthorized() {
 }
 
 /**
+ * 是否为登录接口请求。
+ * 登录接口的 401 是「业务失败」（用户名或密码错误），并非登录态失效——
+ * 必须展示后端真实提示，不能触发清态跳转（否则错误信息被吞掉）。
+ */
+function isLoginEndpoint(config?: AxiosRequestConfig): boolean {
+  return !!config?.url?.includes('/api/v1/auth/login')
+}
+
+/**
  * 请求拦截器职责：
  * 1. 从 Pinia 读取 token，注入 Authorization: Bearer <token>；
  * 2. 未登录时保持匿名请求（放行白名单接口，由后端鉴权）。
@@ -57,7 +66,8 @@ instance.interceptors.response.use(
   (response) => {
     const res = response.data as Result
     if (res.code !== SUCCESS_CODE) {
-      if (res.code === UNAUTHORIZED_CODE) {
+      // 登录接口的业务码 401 = 凭据错误，按普通失败提示；其余 401 才视为登录态失效
+      if (res.code === UNAUTHORIZED_CODE && !isLoginEndpoint(response.config)) {
         handleUnauthorized()
       } else {
         ElMessage.error(res.msg || '请求失败')
@@ -70,7 +80,12 @@ instance.interceptors.response.use(
   },
   (error) => {
     if (error.response?.status === UNAUTHORIZED_CODE) {
-      handleUnauthorized()
+      if (isLoginEndpoint(error.config)) {
+        // 登录失败：展示后端真实提示（如「用户名或密码错误」），不清态不跳转
+        ElMessage.error(error.response.data?.msg || '用户名或密码错误')
+      } else {
+        handleUnauthorized()
+      }
     } else {
       const msg =
         error.response?.data?.msg ??
