@@ -346,7 +346,50 @@ git push -u origin main
 - 手动回滚：历史版本在 `/opt/ziyun-blog/releases/<sha>/`，复制其中 dist/app.jar 到当前位并 `docker compose up -d --build`
 - 查看日志：`docker logs -f ziyun-backend`；应用日志落盘 `/opt/ziyun-blog/logs/blog-server.log`
 
-### HTTPS（后续）
+### HTTPS（Let's Encrypt，推荐）
 
-`deploy/nginx/blog.conf` 已预留 443 配置注释；用 certbot webroot 模式签发证书，
-挂载进 nginx 容器（放开 compose 里 443 端口与证书卷）即可，无需改动整体结构。
+免费正式证书（浏览器无警告）+ 自动续期。仓库配置已启用 443（blog.conf 双 server 块 +
+compose 443 端口 + /etc/letsencrypt 挂载），证书签发后部署即可生效。
+
+#### 13.1 签发证书（服务器一次性）
+
+```bash
+# 1) 安装 certbot（自带 systemd 定时器，自动续期）
+apt install -y certbot
+
+# 2) 签发：standalone 模式临时占用 80 端口，pre/post hook 自动停启 nginx
+#    （hooks 会被写进 renewal 配置，未来自动续期同样生效，无需干预）
+docker compose -f /opt/ziyun-blog/docker-compose.yml stop nginx   # 可选，pre-hook 已处理
+certbot certonly --standalone -d ziyun.fun \
+  --register-unsafely-without-email --agree-tos -n \
+  --pre-hook  "docker compose -f /opt/ziyun-blog/docker-compose.yml stop nginx" \
+  --post-hook "docker compose -f /opt/ziyun-blog/docker-compose.yml start nginx"
+
+# 3) 验证证书已生成
+ls /etc/letsencrypt/live/ziyun.fun/
+```
+
+> www.ziyun.fun 若已解析到本机，可在签发命令追加 `-d www.ziyun.fun`。
+
+#### 13.2 启用 HTTPS（推送部署）
+
+```bash
+git add deploy/nginx/blog.conf deploy/docker-compose.yml
+git commit -m "feat: 启用 HTTPS(Let's Encrypt)"
+git push
+```
+
+部署脚本会重建 nginx 容器加载 443 配置。**顺序不可反**：先签发证书再推送
+（nginx 启动时证书文件必须存在，否则容器起不来会触发回滚）。
+
+#### 13.3 验证与续期
+
+```bash
+curl -sI https://ziyun.fun/ | head -3          # 200 + ssl 正常
+certbot certificates                            # 查看证书到期时间
+systemctl list-timers | grep certbot            # 自动续期定时器（每天检查两次）
+```
+
+- 续期：certbot 自动执行（到期前 30 天起续期），hooks 自动停/启 nginx，全程无需干预
+- 手动续期测试：`certbot renew --dry-run`
+- 证书失效场景：80 端口被占用（hooks 未执行成功）时续期失败，需检查容器状态

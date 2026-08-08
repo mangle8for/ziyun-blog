@@ -14,6 +14,8 @@
 #     内含 MySQL 密码 / JWT / OSS 凭据，已 .gitignore 不入库）
 #   - mysql 数据卷 mysql-data 持久化，重建容器不丢数据
 #   - init.sql 仅在 mysql 数据卷为空（首次启动）时自动执行
+#   - nginx 443 需要证书文件存在才能启动（/etc/letsencrypt 挂载），
+#     首次启用 HTTPS 必须先签发证书（见 docs/DEPLOY.md 第 13 章）
 # ============================================================
 
 services:
@@ -24,13 +26,14 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
-      # HTTPS 就绪后放开 443，并取消下方证书卷挂载注释
-      # - "443:443"
+      - "443:443"
     volumes:
       - ./nginx/blog.conf:/etc/nginx/conf.d/blog.conf:ro
       - ./dist:/usr/share/nginx/html:ro
-      # HTTPS：宿主机 certbot --webroot 模式签发后取消注释
-      # - /etc/letsencrypt:/etc/letsencrypt:ro
+      # Let's Encrypt 证书（宿主机 certbot 签发，挂载进容器；续期后 reload 生效）
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+      # certbot ACME 验证目录（webroot 续期备用；standalone 签发时无需）
+      - ./acme-challenge:/var/www:ro
     mem_limit: 128m
     cpus: 0.5
     depends_on:
