@@ -1,6 +1,5 @@
 import { get, post, put } from '@/utils/request'
 import type { LoginPayload, LoginResult, ProfilePayload, RegisterPayload, UpdatePasswordPayload, User } from '@/types'
-
 /** 登录：成功返回 token + 用户信息 */
 export function login(data: LoginPayload) {
   return post<LoginResult>('/api/v1/auth/login', data)
@@ -32,4 +31,16 @@ export function updateProfile(data: ProfilePayload) {
  */
 export function updatePassword(data: UpdatePasswordPayload) {
   return put<void>('/api/v1/auth/password', data)
+}
+
+/**
+ * 上传头像（本人，每月限 3 次，后端限流）：
+ * 返回新头像 URL（后端已同步更新用户资料）。
+ */
+export function uploadAvatar(file: File) {
+  const formData = new FormData()
+  formData.append('file', file)
+  return post<string>('/api/v1/auth/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }

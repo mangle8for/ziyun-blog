@@ -1,9 +1,14 @@
-import { del, get, put } from '@/utils/request'
-import type { PageResult, UserAdmin, UserManageQuery, UserStatusPayload } from '@/types'
+import { del, get, post, put } from '@/utils/request'
+import type { CreateUserPayload, PageResult, UserAdmin, UserManageQuery, UserStatusPayload } from '@/types'
 
 /** 分页查询用户列表（管理员；支持用户名/昵称关键字搜索） */
 export function getUserPage(params?: UserManageQuery) {
   return get<PageResult<UserAdmin>>('/api/v1/users', { params })
+}
+
+/** 新增游客用户（管理员代建，普通角色）：返回新用户 ID */
+export function createUser(data: CreateUserPayload) {
+  return post<string>('/api/v1/users', data)
 }
 
 /** 启用/禁用用户（禁用立即踢下线，被禁账号无法登录） */

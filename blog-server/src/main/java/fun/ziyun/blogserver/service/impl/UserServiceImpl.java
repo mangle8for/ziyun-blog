@@ -5,6 +5,7 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import fun.ziyun.blogserver.common.PageResult;
 import fun.ziyun.blogserver.common.ResultCode;
+import fun.ziyun.blogserver.dto.RegisterDTO;
 import fun.ziyun.blogserver.entity.Article;
 import fun.ziyun.blogserver.entity.User;
 import fun.ziyun.blogserver.exception.BusinessException;
@@ -64,6 +65,29 @@ public class UserServiceImpl extends ServiceImpl<UserMapper, User> implements Us
 
         Page<User> result = this.page(new Page<>(page, size), wrapper);
         return PageResult.from(result.convert(this::toAdminVO));
+    }
+
+    @Override
+    public Long createUser(RegisterDTO dto) {
+        // 重名校验：数据库唯一索引兜底，业务层先给友好提示
+        Long count = this.count(new LambdaQueryWrapper<User>()
+                .eq(User::getUsername, dto.getUsername()));
+        if (count != null && count > 0) {
+            throw new BusinessException(ResultCode.CONFLICT, "用户名已存在：" + dto.getUsername());
+        }
+
+        User user = new User();
+        user.setUsername(dto.getUsername());
+        // BCrypt 加密后入库（与注册接口同规格）
+        user.setPassword(passwordEncoder.encode(dto.getPassword()));
+        user.setNickname(dto.getNickname() == null || dto.getNickname().isBlank()
+                ? dto.getUsername() : dto.getNickname());
+        // 管理员代建的用户固定普通角色（游客），防越权提升
+        user.setRole(0);
+        user.setStatus(1);
+        this.save(user);
+        log.info("管理员新增了游客用户 {}", dto.getUsername());
+        return user.getId();
     }
 
     @Override

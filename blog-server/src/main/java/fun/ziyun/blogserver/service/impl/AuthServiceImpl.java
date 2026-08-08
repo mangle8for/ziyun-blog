@@ -11,6 +11,7 @@ import fun.ziyun.blogserver.exception.BusinessException;
 import fun.ziyun.blogserver.mapper.UserMapper;
 import fun.ziyun.blogserver.security.AuthUser;
 import fun.ziyun.blogserver.service.AuthService;
+import fun.ziyun.blogserver.service.FileService;
 import fun.ziyun.blogserver.util.JwtUtil;
 import fun.ziyun.blogserver.vo.LoginVO;
 import fun.ziyun.blogserver.vo.UserVO;
@@ -28,7 +29,12 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
+import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Pattern;
 
@@ -67,11 +73,18 @@ public class AuthServiceImpl implements AuthService {
     /** 计数窗口与锁定时长（分钟）：15 分钟内失败 5 次锁 15 分钟 */
     private static final long WINDOW_MINUTES = 15;
 
+    /** 头像修改月度上限：每月最多 3 次（自然月，Redis 计数） */
+    private static final long AVATAR_MONTHLY_LIMIT = 3;
+
+    /** 头像月度计数 key 前缀（key 带 yyyyMM，天然按自然月隔离） */
+    private static final String AVATAR_COUNT_KEY = "avatar:count:";
+
     private final UserMapper userMapper;
     private final PasswordEncoder passwordEncoder;
     private final AuthenticationManager authenticationManager;
     private final JwtUtil jwtUtil;
     private final StringRedisTemplate stringRedisTemplate;
+    private final FileService fileService;
 
     /** JWT 有效期（小时），与 token 生命周期保持一致（Redis key 同步过期） */
     @Value("${blog.jwt.expire-hours}")
@@ -213,6 +226,46 @@ public class AuthServiceImpl implements AuthService {
         //    防止「旧密码继续可用/其他设备未失效」——改密即全局下线。
         stringRedisTemplate.delete(LOGIN_TOKEN_KEY + userId);
         log.info("用户 {} 修改了密码，所有会话已失效", userId);
+    }
+
+    @Override
+    public String uploadAvatar(Long userId, MultipartFile file) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException(ResultCode.UNAUTHORIZED, "用户不存在");
+        }
+
+        // 1. 月度限流：每月最多 3 次。先读计数（不占位），
+        //    上传失败（类型/大小/OSS 异常）不计入次数。
+        String monthKey = AVATAR_COUNT_KEY + userId + ":"
+                + LocalDate.now().format(DateTimeFormatter.ofPattern("yyyyMM"));
+        String usedStr = stringRedisTemplate.opsForValue().get(monthKey);
+        long used = usedStr == null ? 0 : Long.parseLong(usedStr);
+        if (used >= AVATAR_MONTHLY_LIMIT) {
+            throw new BusinessException(ResultCode.TOO_MANY_REQUESTS,
+                    "本月头像修改次数已达上限（每月 " + AVATAR_MONTHLY_LIMIT + " 次），请下月再试");
+        }
+
+        // 2. 上传（类型白名单/5MB 校验与 OSS 上传在 FileService 内）
+        String url = fileService.upload(file);
+
+        // 3. 上传成功才计数；首次计数时设置过期 = 下月 1 号零点（自然月自动重置）
+        Long newUsed = stringRedisTemplate.opsForValue().increment(monthKey);
+        if (newUsed != null && newUsed == 1) {
+            long ttlSeconds = Duration.between(LocalDateTime.now(),
+                    LocalDate.now().plusMonths(1).withDayOfMonth(1).atStartOfDay()).getSeconds();
+            stringRedisTemplate.expire(monthKey, Math.max(ttlSeconds, 1), TimeUnit.SECONDS);
+        }
+
+        // 4. 更新头像字段（旧头像文件不删除：OSS 无引用计数，删了无法回滚；
+        //    每月 3 次的额度天然限制了废弃文件增长）
+        User update = new User();
+        update.setId(userId);
+        update.setAvatar(url);
+        userMapper.updateById(update);
+
+        log.info("用户 {} 更新头像，本月第 {} 次（上限 {}）", userId, Math.min(newUsed, AVATAR_MONTHLY_LIMIT), AVATAR_MONTHLY_LIMIT);
+        return url;
     }
 
     /** 简单邮箱格式校验（可空字段，非空时严格校验） */

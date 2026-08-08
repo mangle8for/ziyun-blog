@@ -1,9 +1,8 @@
 package fun.ziyun.blogserver.service;
 
 import fun.ziyun.blogserver.common.PageResult;
-import fun.ziyun.blogserver.dto.UpdateProfileDTO;
+import fun.ziyun.blogserver.dto.RegisterDTO;
 import fun.ziyun.blogserver.vo.UserAdminVO;
-import fun.ziyun.blogserver.vo.UserVO;
 
 /**
  * 用户服务：用户管理（管理员）+ 个人信息（本人）。
@@ -14,6 +13,9 @@ public interface UserService {
 
     /** 分页查询用户列表（支持用户名/昵称关键字模糊搜索），按创建时间倒序 */
     PageResult<UserAdminVO> pageUsers(long page, long size, String keyword);
+
+    /** 新增游客用户（管理员代建）：普通角色，返回用户 ID */
+    Long createUser(RegisterDTO dto);
 
     /** 启用/禁用用户：禁用时立即清除该用户的 Redis 登录态（踢下线） */
     void updateStatus(Long id, Integer status, Long operatorId);

@@ -69,6 +69,13 @@ export interface UserManageQuery {
   keyword?: string
 }
 
+/** 新增用户（管理员代建）载荷，对齐后端 RegisterDTO */
+export interface CreateUserPayload {
+  username: string
+  password: string
+  nickname?: string
+}
+
 /** 用户状态切换载荷，对齐后端 StatusUpdateDTO */
 export interface UserStatusPayload {
   status: 0 | 1

@@ -2,6 +2,7 @@ package fun.ziyun.blogserver.controller;
 
 import fun.ziyun.blogserver.common.PageResult;
 import fun.ziyun.blogserver.common.Result;
+import fun.ziyun.blogserver.dto.RegisterDTO;
 import fun.ziyun.blogserver.dto.StatusUpdateDTO;
 import fun.ziyun.blogserver.dto.UserPageQuery;
 import fun.ziyun.blogserver.security.AuthUser;
@@ -15,6 +16,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -35,6 +37,12 @@ public class UserController {
     @GetMapping
     public Result<PageResult<UserAdminVO>> page(@Valid UserPageQuery query) {
         return Result.ok(userService.pageUsers(query.getPage(), query.getSize(), query.getKeyword()));
+    }
+
+    /** 新增游客用户（管理员代建，普通角色；返回新用户 ID） */
+    @PostMapping
+    public Result<Long> create(@RequestBody @Valid RegisterDTO dto) {
+        return Result.ok(userService.createUser(dto));
     }
 
     /** 启用/禁用用户（禁用立即踢下线） */

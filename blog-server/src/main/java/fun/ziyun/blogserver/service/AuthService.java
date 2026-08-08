@@ -6,9 +6,10 @@ import fun.ziyun.blogserver.dto.UpdatePasswordDTO;
 import fun.ziyun.blogserver.dto.UpdateProfileDTO;
 import fun.ziyun.blogserver.vo.LoginVO;
 import fun.ziyun.blogserver.vo.UserVO;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 认证服务：注册/登录/登出/当前用户/个人信息/改密。
+ * 认证服务：注册/登录/登出/当前用户/个人信息/改密/头像。
  */
 public interface AuthService {
 
@@ -33,4 +34,10 @@ public interface AuthService {
      * 清除后所有会话（含当前）的 token 立即失效，需重新登录。
      */
     void updatePassword(Long userId, UpdatePasswordDTO dto);
+
+    /**
+     * 上传头像（本人）：每月限 3 次（Redis 自然月计数，成功才计数）。
+     * 上传成功返回新头像 URL 并更新用户资料。
+     */
+    String uploadAvatar(Long userId, MultipartFile file);
 }

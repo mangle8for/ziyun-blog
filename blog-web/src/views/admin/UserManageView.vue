@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Key, Refresh, Search, User } from '@element-plus/icons-vue'
+import { Delete, Key, Plus, Refresh, Search, User } from '@element-plus/icons-vue'
 
-import { deleteUser, getUserPage, resetUserPassword, updateUserStatus } from '@/api/user'
+import { createUser, deleteUser, getUserPage, resetUserPassword, updateUserStatus } from '@/api/user'
 import GlassCard from '@/components/GlassCard.vue'
-import type { UserAdmin } from '@/types'
+import type { CreateUserPayload, UserAdmin } from '@/types'
 
 const list = ref<UserAdmin[]>([])
 const loading = ref(false)
@@ -16,6 +16,44 @@ const query = reactive({
   size: 10,
   keyword: '',
 })
+
+// ==================== 新增用户 ====================
+
+const createDialogVisible = ref(false)
+const createLoading = ref(false)
+const createForm = ref<CreateUserPayload>({ username: '', password: '', nickname: '' })
+const createFormRef = ref()
+
+const createRules = {
+  username: [
+    { required: true, message: '请输入用户名', trigger: 'blur' },
+    { pattern: /^[a-zA-Z0-9_]{4,20}$/, message: '4-20 位字母、数字或下划线', trigger: 'blur' },
+  ],
+  password: [
+    { required: true, message: '请输入初始密码', trigger: 'blur' },
+    { min: 6, max: 32, message: '密码长度须在 6-32 位', trigger: 'blur' },
+  ],
+  nickname: [{ max: 50, message: '昵称不能超过 50 字', trigger: 'blur' }],
+}
+
+function openCreate() {
+  createForm.value = { username: '', password: '', nickname: '' }
+  createDialogVisible.value = true
+}
+
+async function onCreate() {
+  if (!createFormRef.value) return
+  await createFormRef.value.validate()
+  createLoading.value = true
+  try {
+    await createUser(createForm.value)
+    ElMessage.success(`用户「${createForm.value.nickname || createForm.value.username}」创建成功，默认普通角色`)
+    createDialogVisible.value = false
+    load()
+  } finally {
+    createLoading.value = false
+  }
+}
 
 async function load() {
   loading.value = true
@@ -110,6 +148,7 @@ onMounted(load)
           @clear="onSearch"
         />
         <el-button type="primary" :icon="Search" @click="onSearch">搜索</el-button>
+        <el-button :icon="Plus" type="primary" plain @click="openCreate">新增用户</el-button>
         <el-button :icon="Refresh" circle @click="load" />
       </div>
     </div>
@@ -172,6 +211,26 @@ onMounted(load)
         />
       </div>
     </GlassCard>
+
+    <!-- 新增用户弹窗 -->
+    <el-dialog v-model="createDialogVisible" title="新增用户" width="420px" destroy-on-close>
+      <el-form ref="createFormRef" :model="createForm" :rules="createRules" label-width="80px">
+        <el-form-item label="用户名" prop="username">
+          <el-input v-model="createForm.username" placeholder="4-20 位字母、数字或下划线" maxlength="20" show-word-limit />
+        </el-form-item>
+        <el-form-item label="初始密码" prop="password">
+          <el-input v-model="createForm.password" type="password" show-password placeholder="6-32 位" maxlength="32" />
+        </el-form-item>
+        <el-form-item label="昵称" prop="nickname">
+          <el-input v-model="createForm.nickname" placeholder="选填，默认与用户名相同" maxlength="50" show-word-limit />
+        </el-form-item>
+      </el-form>
+      <div class="create-tip">新用户默认为普通角色（游客），创建后可将账号告知对方登录</div>
+      <template #footer>
+        <el-button @click="createDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="createLoading" @click="onCreate">创建</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -232,5 +291,11 @@ onMounted(load)
 .empty {
   color: var(--text-muted);
   padding: 40px 0;
+}
+
+.create-tip {
+  font-size: 12px;
+  color: var(--text-muted);
+  padding: 0 2px;
 }
 </style>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
@@ -17,6 +17,66 @@ const { theme } = useTheme()
 const article = ref<ArticleDetail | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
+
+// ==================== 目录（TOC） ====================
+
+interface TocItem {
+  /** 标题级别 1-4 */
+  level: number
+  /** 标题文本 */
+  text: string
+}
+
+const toc = ref<TocItem[]>([])
+const activeIndex = ref(-1)
+/** 渲染后的标题 DOM 元素（按文档顺序，与 toc 一一对应） */
+let headingElements: HTMLElement[] = []
+
+/** 从 Markdown 提取 h1-h4 标题：先剥离围栏代码块，避免 ``` 内 # 被误识别 */
+function parseToc(markdown: string): TocItem[] {
+  const withoutCode = markdown.replace(/```[\s\S]*?```/g, '')
+  const items: TocItem[] = []
+  const regex = /^(#{1,4})\s+(.+?)\s*$/gm
+  let match: RegExpExecArray | null
+  while ((match = regex.exec(withoutCode)) !== null) {
+    // 正则捕获组必然存在，?? 仅用于满足 TS 严格索引检查
+    const hashes = match[1] ?? ''
+    const title = match[2] ?? ''
+    items.push({ level: hashes.length, text: title.trim() })
+  }
+  return items
+}
+
+/** 文章渲染完成后收集标题 DOM（按文档顺序与 toc 对齐） */
+async function buildToc() {
+  if (!article.value) return
+  toc.value = parseToc(article.value.content)
+  activeIndex.value = -1
+  headingElements = []
+  if (toc.value.length === 0) return
+  await nextTick()
+  // MdPreview 渲染在 .article-content 容器内（class 唯一）
+  const root = document.querySelector('.article-content')
+  if (!root) return
+  headingElements = Array.from(root.querySelectorAll('h1, h2, h3, h4')) as HTMLElement[]
+}
+
+/** 点击目录项：平滑滚动到对应标题（减去吸顶导航高度） */
+function jumpTo(index: number) {
+  const el = headingElements[index]
+  if (!el) return
+  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: 'smooth' })
+  activeIndex.value = index
+}
+
+/** 滚动监听：高亮当前阅读位置（视口内最靠上的标题） */
+function onScroll() {
+  let current = -1
+  headingElements.forEach((el, index) => {
+    if (el.getBoundingClientRect().top <= 80) current = index
+  })
+  activeIndex.value = current
+}
 
 /** MdPreview 的主题跟随全局（md-editor-v3 内置 dark 主题） */
 function loadDetail(id: string) {
@@ -46,6 +106,11 @@ watch(
   },
 )
 
+/** 文章内容变化（加载/切换）后重建目录 */
+watch(article, () => {
+  buildToc()
+})
+
 function formatDateTime(iso?: string) {
   return iso ? iso.replace('T', ' ').slice(0, 16) : ''
 }
@@ -56,6 +121,11 @@ function go(id: string) {
 
 onMounted(() => {
   loadDetail(route.params.id as string)
+  window.addEventListener('scroll', onScroll, { passive: true })
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onScroll)
 })
 </script>
 
@@ -69,8 +139,23 @@ onMounted(() => {
     </GlassCard>
 
     <template v-else-if="article">
-      <!-- 正文卡片：毛玻璃大留白 -->
-      <GlassCard padded="lg" class="article-card">
+      <div class="article-layout">
+        <!-- 右侧目录：长文快速跳转（宽屏固定显示） -->
+        <aside class="article-toc" v-if="toc.length">
+          <div class="toc-title">目录</div>
+          <div
+            v-for="(item, index) in toc"
+            :key="index"
+            class="toc-item"
+            :class="{ active: activeIndex === index, [`lv-${item.level}`]: true }"
+            @click="jumpTo(index)"
+          >
+            {{ item.text }}
+          </div>
+        </aside>
+
+        <!-- 正文卡片：毛玻璃大留白；no-hover 去掉 hover 微动，专注阅读 -->
+        <GlassCard no-hover padded="lg" class="article-card">
         <!-- 头部：标题 + 元信息 -->
         <header class="article-header">
           <h1 class="article-title">{{ article.title }}</h1>
@@ -112,6 +197,7 @@ onMounted(() => {
           v-if="article.prevArticle"
           class="nav-card prev"
           padded="md"
+          no-hover
           @click="go(article.prevArticle.id)"
         >
           <div class="nav-dir"><el-icon><ArrowLeft /></el-icon> 上一篇</div>
@@ -123,6 +209,7 @@ onMounted(() => {
           v-if="article.nextArticle"
           class="nav-card next"
           padded="md"
+          no-hover
           @click="go(article.nextArticle.id)"
         >
           <div class="nav-dir">下一篇 <el-icon><ArrowRight /></el-icon></div>
@@ -130,14 +217,84 @@ onMounted(() => {
         </GlassCard>
         <div v-else class="nav-spacer"></div>
       </nav>
+      </div>
     </template>
   </div>
 </template>
 
 <style scoped>
 .article-detail {
-  max-width: 860px;
+  max-width: 1080px;
   margin: 0 auto;
+}
+
+/* 正文 + 右侧目录的两栏布局（宽屏生效） */
+.article-layout {
+  display: grid;
+  grid-template-columns: 1fr 220px;
+  gap: 24px;
+  align-items: start;
+}
+
+/* 右侧目录：吸顶、可滚动、跟随阅读位置高亮 */
+.article-toc {
+  position: sticky;
+  top: 76px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding: 14px 16px;
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+}
+
+.toc-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-main);
+  padding-bottom: 8px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.toc-item {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  padding: 5px 8px;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: color 0.2s ease, background-color 0.2s ease;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.toc-item:hover {
+  color: var(--text-main);
+  background: var(--bg-page);
+}
+
+.toc-item.active {
+  color: var(--color-primary);
+  background: var(--bg-page);
+  font-weight: 600;
+}
+
+/* 不同级别缩进 */
+.toc-item.lv-2 {
+  padding-left: 16px;
+}
+.toc-item.lv-3 {
+  padding-left: 28px;
+  font-size: 12px;
+}
+.toc-item.lv-4 {
+  padding-left: 40px;
+  font-size: 12px;
 }
 
 .not-found {
@@ -318,6 +475,16 @@ onMounted(() => {
   }
   .nav-card.next .nav-title {
     text-align: left;
+  }
+}
+
+/* 窄屏隐藏右侧目录（正文单栏，避免挤压阅读宽度） */
+@media (max-width: 1080px) {
+  .article-layout {
+    grid-template-columns: 1fr;
+  }
+  .article-toc {
+    display: none;
   }
 }
 </style>

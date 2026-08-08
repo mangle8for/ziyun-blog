@@ -7,11 +7,13 @@
 defineProps<{
   /** 内边距档位：卡片用于文章详情用大 padding，列表卡片用小 */
   padded?: 'sm' | 'md' | 'lg'
+  /** 禁用 hover 效果：长文阅读容器（如文章详情）hover 微动会干扰阅读 */
+  noHover?: boolean
 }>()
 </script>
 
 <template>
-  <div class="glass-card" :class="[`pad-${padded ?? 'md'}`]">
+  <div class="glass-card" :class="[`pad-${padded ?? 'md'}`, { 'no-hover': noHover }]">
     <slot />
   </div>
 </template>
@@ -33,13 +35,13 @@ defineProps<{
     background-color 0.4s ease;
 }
 
-.glass-card:hover {
+.glass-card:not(.no-hover):hover {
   border-color: var(--color-primary);
   box-shadow: 0 12px 40px rgba(124, 108, 240, 0.18);
   transform: translateY(-2px);
 }
 
-html:not(.dark) .glass-card:hover {
+html:not(.dark) .glass-card:not(.no-hover):hover {
   box-shadow: 0 12px 40px rgba(47, 125, 90, 0.14);
 }
 

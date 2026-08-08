@@ -17,7 +17,9 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.multipart.MultipartFile;
 
 /**
  * 认证接口（login/register 在 Security 白名单，其余需要登录态）。
@@ -83,5 +85,17 @@ public class AuthController {
         AuthUser authUser = (AuthUser) authentication.getPrincipal();
         authService.updatePassword(authUser.getId(), dto);
         return Result.ok();
+    }
+
+    /**
+     * 上传头像（本人，任意登录角色）：每月限 3 次。
+     * 成功返回新头像 URL（用户资料已同步更新）。
+     * 校验与存储走 FileService（图片类型白名单 + 5MB）。
+     */
+    @PostMapping("/avatar")
+    public Result<String> uploadAvatar(@RequestParam("file") MultipartFile file,
+                                       Authentication authentication) {
+        AuthUser authUser = (AuthUser) authentication.getPrincipal();
+        return Result.ok(authService.uploadAvatar(authUser.getId(), file));
     }
 }
