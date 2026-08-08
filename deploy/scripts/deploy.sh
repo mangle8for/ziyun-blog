@@ -78,6 +78,13 @@ cp -f "${RELEASE_DIR}/app.jar" "${APP_DIR}/backend/app.jar"
 echo "[deploy] docker compose up -d --build"
 docker compose up -d --build --remove-orphans
 
+# nginx 容器强制重建：Docker bind mount 在容器创建时固定宿主目录 inode，
+# 若历史上 dist 曾被 rm -rf 重建过，旧容器挂载点会指向已删除的 inode
+# （容器内看到空目录 -> 前端 403）。rsync 保证本次起 inode 稳定，
+# 重建保证当前容器重新绑定新 dist 目录。重建仅 1 秒，成本可忽略。
+echo "[deploy] docker compose up -d --force-recreate nginx"
+docker compose up -d --force-recreate nginx
+
 # ---------- 7. 健康检查（API 链路优先，最多等 180s） ----------
 # 说明：只以 /api 链路（nginx 反代 -> backend -> MySQL）为成功标准；
 # 前端静态文件 403/404 属于 dist 权限/时序问题，不阻断本次部署（回滚无意义）。
