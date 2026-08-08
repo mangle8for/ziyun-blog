@@ -36,8 +36,10 @@ declare module 'vue' {
     ElTooltip: typeof import('element-plus/es')['ElTooltip']
     ElUpload: typeof import('element-plus/es')['ElUpload']
     GlassCard: typeof import('./components/GlassCard.vue')['default']
+    ProgressiveImage: typeof import('./components/ProgressiveImage.vue')['default']
     RouterLink: typeof import('vue-router')['RouterLink']
     RouterView: typeof import('vue-router')['RouterView']
+    SkeletonCard: typeof import('./components/SkeletonCard.vue')['default']
     StarfieldBackground: typeof import('./components/StarfieldBackground.vue')['default']
   }
   export interface GlobalDirectives {

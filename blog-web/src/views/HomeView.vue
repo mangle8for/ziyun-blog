@@ -7,6 +7,8 @@ import { getArticlePage } from '@/api/article'
 import { getCategoryList, getHotCategories } from '@/api/category'
 import { getHotTags, getTagList } from '@/api/tag'
 import GlassCard from '@/components/GlassCard.vue'
+import ProgressiveImage from '@/components/ProgressiveImage.vue'
+import SkeletonCard from '@/components/SkeletonCard.vue'
 import type { ArticleListItem, TagItem } from '@/types'
 
 const router = useRouter()
@@ -245,42 +247,48 @@ onBeforeUnmount(() => {
       </div>
     </section>
 
-    <!-- 文章卡片网格 -->
-    <section v-loading="loading" class="article-grid">
-      <GlassCard
-        v-for="(article, index) in articles"
-        :key="article.id"
-        class="article-card"
-        :style="{ animationDelay: `${index * 60}ms` }"
-        padded="md"
-      >
-        <div class="card-body" @click="goDetail(article.id)">
-          <!-- 封面：懒加载 + 渐显 -->
-          <div class="cover-wrap" v-if="article.cover">
-            <img :src="article.cover" :alt="article.title" loading="lazy" class="cover" />
-          </div>
-          <div class="card-text">
-            <h2 class="card-title">{{ article.title }}</h2>
-            <p class="card-summary">{{ article.summary || '（暂无摘要）' }}</p>
-            <div class="card-meta">
-              <span class="meta-item">{{ formatDate(article.createTime) }}</span>
-              <span class="meta-item" v-if="article.categoryName">{{ article.categoryName }}</span>
-              <span class="meta-item">{{ article.viewCount }} 阅读</span>
+    <!-- 文章卡片网格：首次加载显示骨架屏，翻页时保留旧列表 + 加载遮罩 -->
+    <section v-loading="loading && articles.length > 0" class="article-grid">
+      <template v-if="loading && articles.length === 0">
+        <SkeletonCard v-for="n in 6" :key="n" :index="n - 1" />
+      </template>
+
+      <template v-else>
+        <GlassCard
+          v-for="(article, index) in articles"
+          :key="article.id"
+          class="article-card"
+          :style="{ animationDelay: `${index * 60}ms` }"
+          padded="md"
+        >
+          <div class="card-body" @click="goDetail(article.id)">
+            <!-- 封面：低清预览 + 原图淡入（懒加载类型 C） -->
+            <div class="cover-wrap" v-if="article.cover">
+              <ProgressiveImage :src="article.cover" :alt="article.title" hover-zoom />
             </div>
-            <div class="card-tags" v-if="article.tags?.length">
-              <span v-for="tag in visibleTags(article.tags)" :key="tag.id" class="tag-mini">
-                #{{ tag.name }}
-              </span>
-              <span v-if="article.tags.length > MAX_CARD_TAGS" class="tag-mini tag-more">
-                +{{ article.tags.length - MAX_CARD_TAGS }}
-              </span>
+            <div class="card-text">
+              <h2 class="card-title">{{ article.title }}</h2>
+              <p class="card-summary">{{ article.summary || '（暂无摘要）' }}</p>
+              <div class="card-meta">
+                <span class="meta-item">{{ formatDate(article.createTime) }}</span>
+                <span class="meta-item" v-if="article.categoryName">{{ article.categoryName }}</span>
+                <span class="meta-item">{{ article.viewCount }} 阅读</span>
+              </div>
+              <div class="card-tags" v-if="article.tags?.length">
+                <span v-for="tag in visibleTags(article.tags)" :key="tag.id" class="tag-mini">
+                  #{{ tag.name }}
+                </span>
+                <span v-if="article.tags.length > MAX_CARD_TAGS" class="tag-mini tag-more">
+                  +{{ article.tags.length - MAX_CARD_TAGS }}
+                </span>
+              </div>
+            </div>
+            <div class="card-arrow">
+              <el-icon><ArrowRight /></el-icon>
             </div>
           </div>
-          <div class="card-arrow">
-            <el-icon><ArrowRight /></el-icon>
-          </div>
-        </div>
-      </GlassCard>
+        </GlassCard>
+      </template>
 
       <!-- 加载失败态：与真实空态区分，提供重试 -->
       <div v-if="!loading && loadError" class="empty-state">
@@ -465,6 +473,7 @@ onBeforeUnmount(() => {
 }
 
 .cover-wrap {
+  position: relative;
   border-radius: 10px;
   overflow: hidden;
   aspect-ratio: 16 / 9;
@@ -476,29 +485,6 @@ onBeforeUnmount(() => {
   display: flex;
   flex-direction: column;
   gap: 10px;
-}
-
-.cover {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-  /* 封面渐显 + hover 微放大 */
-  animation: fade-in 0.5s ease both;
-  transition: transform 0.4s ease;
-}
-
-.article-card:hover .cover {
-  transform: scale(1.03);
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 .card-title {

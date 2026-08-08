@@ -7,6 +7,7 @@ import 'md-editor-v3/lib/preview.css'
 
 import { getArticleDetail } from '@/api/article'
 import GlassCard from '@/components/GlassCard.vue'
+import ProgressiveImage from '@/components/ProgressiveImage.vue'
 import { useTheme } from '@/utils/theme'
 import type { ArticleDetail } from '@/types'
 
@@ -31,8 +32,8 @@ const toc = ref<TocItem[]>([])
 const activeIndex = ref(-1)
 /** 移动端目录抽屉开关（宽屏目录为右侧吸顶栏，窄屏改抽屉） */
 const tocDrawerVisible = ref(false)
-/** 渲染后的标题 DOM 元素（按文档顺序，与 toc 一一对应） */
-let headingElements: HTMLElement[] = []
+/** 渲染后的标题 DOM 元素（与 toc 按文本对齐；个别标题被 MdPreview 吞掉时为 undefined） */
+let headingElements: (HTMLElement | undefined)[] = []
 
 /** 从 Markdown 提取 h1-h4 标题：先剥离围栏代码块，避免 ``` 内 # 被误识别 */
 function parseToc(markdown: string): TocItem[] {
@@ -49,7 +50,9 @@ function parseToc(markdown: string): TocItem[] {
   return items
 }
 
-/** 文章渲染完成后收集标题 DOM（按文档顺序与 toc 对齐） */
+/** 文章渲染完成后收集标题 DOM，与 toc 按文本一一对齐。
+ *  MdPreview 可能吞掉个别标题（如 HTML 块内的 #），导致 DOM 数量
+ *  与正则解析数量错位；按文本匹配可避免「点第 N 项跳到别的标题」。 */
 async function buildToc() {
   if (!article.value) return
   toc.value = parseToc(article.value.content)
@@ -60,28 +63,50 @@ async function buildToc() {
   // MdPreview 渲染在 .article-content 容器内（class 唯一）
   const root = document.querySelector('.article-content')
   if (!root) return
-  headingElements = Array.from(root.querySelectorAll('h1, h2, h3, h4')) as HTMLElement[]
+  const headings = Array.from(root.querySelectorAll('h1, h2, h3, h4')) as HTMLElement[]
+  const remaining = headings.slice()
+  // 数组长度与 toc 保持一一对应；找不到文本时退回按序取下一个
+  headingElements = toc.value.map((item) => {
+    const idx = remaining.findIndex((el) => el.textContent?.trim() === item.text)
+    if (idx >= 0) return remaining.splice(idx, 1)[0]
+    return remaining.shift()
+  })
 }
 
-/** 点击目录项：平滑滚动到对应标题（减去吸顶导航高度） */
+/** 点击目录项：滚动到对应标题。
+ *  用 scrollIntoView + 标题的 scroll-margin-top（见样式）定位，
+ *  相比手算 window.scrollTo 偏移更可靠 —— 不受滚动容器与
+ *  页面布局（图片加载后的高度变化）影响。 */
 function jumpTo(index: number) {
   const el = headingElements[index]
   if (!el) return
-  window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: 'smooth' })
+  el.scrollIntoView({ behavior: 'smooth', block: 'start' })
   activeIndex.value = index
 }
 
-/** 移动端抽屉目录点击：先关抽屉再跳转，避免遮罩残留 */
+/** 移动端抽屉目录点击：先关抽屉，等 body 滚动锁释放后再跳转。
+ *  el-drawer 打开期间会锁定 body 滚动（overflow: hidden），
+ *  若在关闭动画完成前发起平滑滚动会被静默取消 —— 表现为
+ *  「只象征性移动一点点」，故延迟到 @closed 回调再跳。 */
+const pendingTocJump = ref<number | null>(null)
+
 function jumpToFromDrawer(index: number) {
+  pendingTocJump.value = index
   tocDrawerVisible.value = false
-  jumpTo(index)
+}
+
+function onDrawerClosed() {
+  if (pendingTocJump.value !== null) {
+    jumpTo(pendingTocJump.value)
+    pendingTocJump.value = null
+  }
 }
 
 /** 滚动监听：高亮当前阅读位置（视口内最靠上的标题） */
 function onScroll() {
   let current = -1
   headingElements.forEach((el, index) => {
-    if (el.getBoundingClientRect().top <= 80) current = index
+    if (el && el.getBoundingClientRect().top <= 80) current = index
   })
   activeIndex.value = current
 }
@@ -130,10 +155,13 @@ function go(id: string) {
 onMounted(() => {
   loadDetail(route.params.id as string)
   window.addEventListener('scroll', onScroll, { passive: true })
+  // 文章内图片全部加载完成后重算目录对齐（图片加载会改变标题布局）
+  window.addEventListener('load', buildToc)
 })
 
 onBeforeUnmount(() => {
   window.removeEventListener('scroll', onScroll)
+  window.removeEventListener('load', buildToc)
 })
 </script>
 
@@ -170,9 +198,9 @@ onBeforeUnmount(() => {
           </div>
         </header>
 
-        <!-- 封面（有则展示，懒加载） -->
+        <!-- 封面（有则展示，低清预览 + 原图淡入） -->
         <div class="cover" v-if="article.cover">
-          <img :src="article.cover" :alt="article.title" loading="lazy" />
+          <ProgressiveImage :src="article.cover" :alt="article.title" />
         </div>
 
         <!-- Markdown 渲染：
@@ -246,6 +274,7 @@ onBeforeUnmount(() => {
         direction="rtl"
         size="min(78vw, 320px)"
         class="toc-drawer"
+        @closed="onDrawerClosed"
       >
         <div
           v-for="(item, index) in toc"
@@ -285,7 +314,8 @@ onBeforeUnmount(() => {
 
 @media (min-width: 1081px) {
   .article-layout.has-toc {
-    grid-template-columns: minmax(0, 1fr) 220px;
+    /* 目录列加宽，长标题两行内可完整展示（配合 toc-item 换行） */
+    grid-template-columns: minmax(0, 1fr) 260px;
     grid-template-areas:
       'content toc'
       'nav toc';
@@ -333,9 +363,12 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   cursor: pointer;
   transition: color 0.2s ease, background-color 0.2s ease;
+  /* 长标题允许换行（最多两行），不再单行省略 —— 保证完整可读 */
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  word-break: break-word;
 }
 
 .toc-item:hover {
@@ -434,23 +467,13 @@ onBeforeUnmount(() => {
 }
 
 .cover {
+  position: relative;
   margin-bottom: 24px;
   border-radius: 12px;
   overflow: hidden;
-}
-.cover img {
-  width: 100%;
-  display: block;
-  animation: fade-in 0.5s ease both;
-}
-
-@keyframes fade-in {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
+  /* 低清预览与骨架占位期的最小高度，防止布局跳动 */
+  aspect-ratio: 16 / 9;
+  background: var(--bg-page);
 }
 
 /* Markdown 正文样式：穿透 MdPreview 内部，适配主题变量 */
@@ -462,12 +485,15 @@ onBeforeUnmount(() => {
   line-height: 1.85;
 }
 
-/* 阅读排版：标题间距、段落呼吸感 */
+/* 阅读排版：标题间距、段落呼吸感。
+   scroll-margin-top 与 scrollIntoView 配合：吸顶导航(60px) + 呼吸间隙 */
 .article-content :deep(h1),
 .article-content :deep(h2),
-.article-content :deep(h3) {
+.article-content :deep(h3),
+.article-content :deep(h4) {
   color: var(--text-main);
   margin-top: 1.6em;
+  scroll-margin-top: 76px;
 }
 .article-content :deep(p) {
   color: var(--text-main);

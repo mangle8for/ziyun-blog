@@ -40,10 +40,9 @@ export const profile = {
   bio: '热爱技术与写作，喜欢把复杂的问题讲简单。这个博客记录我在后端、前端与部署运维上的实践与思考，也偶尔收藏沿途的风景。',
   /** 头像 URL（留空则显示昵称首字渐变占位头像） */
   avatar: '',
-  /** 社交链接（替换成你自己的地址；不想展示的项直接删除） */
+  /** 社交链接（不想展示的项直接删除；邮箱等隐私项默认不对外展示） */
   socials: [
-    { name: 'GitHub', url: 'https://github.com/your-name', icon: 'github' },
-    { name: '邮箱', url: 'mailto:hi@example.com', icon: 'email' },
+    { name: 'GitHub', url: 'https://github.com/mangle8for', icon: 'github' },
   ] as SocialLink[],
 }
 

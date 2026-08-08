@@ -6,6 +6,7 @@ import { getArticlePage } from '@/api/article'
 import { getCategoryList } from '@/api/category'
 import { getTagList } from '@/api/tag'
 import GlassCard from '@/components/GlassCard.vue'
+import ProgressiveImage from '@/components/ProgressiveImage.vue'
 import { profile, skillGroups } from '@/config/about'
 import type { SocialIconKey } from '@/config/about'
 
@@ -50,6 +51,8 @@ const nicknameInitial = profile.nickname.slice(0, 1)
 
 const statTargets = { articles: 0, categories: 0, tags: 0 }
 const displayStats = reactive({ articles: 0, categories: 0, tags: 0 })
+/** 统计数字加载中（数字位显示骨架条，见 stat-value 内 sk-stat） */
+const statsLoading = ref(true)
 const statItems = [
   { key: 'articles' as const, label: '文章' },
   { key: 'categories' as const, label: '分类' },
@@ -60,6 +63,7 @@ let statsAnimated = false
 let countUpFrame = 0
 
 async function loadStats() {
+  statsLoading.value = true
   try {
     const [page, cats, tags] = await Promise.all([
       getArticlePage({ page: 1, size: 1 }),
@@ -73,6 +77,8 @@ async function loadStats() {
     if (statsRevealed.value) animateStats()
   } catch {
     // 请求拦截器已弹错误提示，此处静默（数字保持 0）
+  } finally {
+    statsLoading.value = false
   }
 }
 
@@ -144,7 +150,13 @@ onBeforeUnmount(() => {
     <GlassCard no-hover padded="lg" class="section profile-card reveal">
       <div class="profile-inner">
         <div class="avatar-wrap">
-          <img v-if="profile.avatar" :src="profile.avatar" :alt="profile.nickname" class="avatar" />
+          <!-- 头像：低清预览 + 原图淡入；无头像时用昵称首字占位 -->
+          <ProgressiveImage
+            v-if="profile.avatar"
+            :src="profile.avatar"
+            :alt="profile.nickname"
+            :lazy="false"
+          />
           <div v-else class="avatar avatar-fallback" aria-hidden="true">{{ nicknameInitial }}</div>
         </div>
         <div class="profile-info">
@@ -198,7 +210,11 @@ onBeforeUnmount(() => {
       <h2 class="section-title">站点统计</h2>
       <div class="stats-grid">
         <div v-for="item in statItems" :key="item.key" class="stat-item">
-          <div class="stat-value">{{ displayStats[item.key] }}</div>
+          <div class="stat-value">
+            <!-- 数字骨架：数据到达前占位（懒加载类型 B：单独的数字） -->
+            <span v-if="statsLoading" class="sk-stat shimmer"></span>
+            <template v-else>{{ displayStats[item.key] }}</template>
+          </div>
           <div class="stat-label">{{ item.label }}</div>
         </div>
       </div>
@@ -263,24 +279,24 @@ onBeforeUnmount(() => {
   gap: 32px;
 }
 
+/* 头像容器：固定尺寸 + 主题色描边 + 呼吸光晕。
+   描边/动画放容器上 —— 真实头像由 ProgressiveImage 铺满（border-radius 继承圆形），
+   占位头像（昵称首字）直接填充容器。 */
 .avatar-wrap {
   position: relative;
   flex-shrink: 0;
-}
-
-.avatar {
   width: 104px;
   height: 104px;
   border-radius: 50%;
-  object-fit: cover;
-  display: block;
-  /* 主题色描边 + 弱呼吸光晕（小面积动画，性能开销可忽略） */
+  overflow: hidden;
   border: 3px solid var(--color-primary);
   animation: avatar-breathe 4s ease-in-out infinite;
 }
 
 /* 无头像时的昵称首字渐变占位 */
 .avatar-fallback {
+  position: absolute;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -446,6 +462,15 @@ onBeforeUnmount(() => {
   font-variant-numeric: tabular-nums;
 }
 
+/* 统计数字骨架条（懒加载类型 B：单独的数字；1.1em 跟随字号缩放） */
+.sk-stat {
+  display: inline-block;
+  width: 56px;
+  height: 1.1em;
+  border-radius: 8px;
+  vertical-align: middle;
+}
+
 .stat-label {
   margin-top: 6px;
   font-size: 13px;
@@ -461,7 +486,7 @@ onBeforeUnmount(() => {
     text-align: center;
     gap: 20px;
   }
-  .avatar {
+  .avatar-wrap {
     width: 88px;
     height: 88px;
   }
@@ -494,7 +519,7 @@ onBeforeUnmount(() => {
   .skill-bar-fill {
     transition: none;
   }
-  .avatar {
+  .avatar-wrap {
     animation: none;
   }
 }

@@ -51,3 +51,53 @@ a:hover {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--color-primary);
 }
+
+/* ============================================================
+ * 骨架屏微光（shimmer）
+ * 三类懒加载共用（数据列表骨架卡片 / 数字占位 / 图片低清预览），
+ * 颜色由 --skeleton-base / --skeleton-shine 主题变量驱动（双主题适配）。
+ * ============================================================ */
+.shimmer {
+  background: linear-gradient(
+    100deg,
+    var(--skeleton-base) 40%,
+    var(--skeleton-shine) 50%,
+    var(--skeleton-base) 60%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 120% 0;
+  }
+  to {
+    background-position: -80% 0;
+  }
+}
+
+/* 尊重「减少动态」系统偏好：停掉微光扫过 */
+@media (prefers-reduced-motion: reduce) {
+  .shimmer {
+    animation: none;
+  }
+}
+
+/* ============================================================
+ * Element Plus v-loading 主题适配
+ * 遮罩/旋转器/文案全部消费主题变量，亮暗两套主题下不刺眼。
+ * ============================================================ */
+.el-loading-mask {
+  background-color: color-mix(in srgb, var(--bg-page) 55%, transparent);
+  backdrop-filter: blur(2px);
+}
+.el-loading-spinner {
+  color: var(--color-primary);
+}
+.el-loading-spinner .path {
+  stroke: var(--color-primary);
+}
+.el-loading-spinner .el-loading-text {
+  color: var(--text-secondary);
+}

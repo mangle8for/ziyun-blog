@@ -40,6 +40,9 @@
   --shadow-card: 0 8px 32px rgba(47, 125, 90, 0.08);
   /* hover 微光（GlassCard 等组件消费，亮/暗各定义避免硬编码色值） */
   --shadow-hover: 0 12px 40px rgba(47, 125, 90, 0.14);
+  /* 骨架屏微光（列表/数字/图片占位，shimmer 动画两端色） */
+  --skeleton-base: rgba(47, 125, 90, 0.08);
+  --skeleton-shine: rgba(255, 255, 255, 0.7);
   /* 导航栏底色 */
   --bg-nav: rgba(244, 241, 234, 0.78);
 
@@ -73,6 +76,8 @@ html.dark {
     linear-gradient(180deg, #0b1220 0%, #101a30 100%);
   --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.45);
   --shadow-hover: 0 12px 40px rgba(124, 108, 240, 0.18);
+  --skeleton-base: rgba(232, 237, 245, 0.07);
+  --skeleton-shine: rgba(232, 237, 245, 0.14);
   --bg-nav: rgba(11, 18, 32, 0.72);
 
   /* Element Plus 官方暗色变量已引入，这里只桥接主色 */
