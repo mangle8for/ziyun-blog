@@ -231,17 +231,33 @@ public class AuthServiceImpl implements AuthService {
     /**
      * 检查是否处于锁定状态。Redis 不可用时 fail-open（跳过限流），
      * 避免基础设施故障导致正常用户无法登录 —— 限流是加分项不是业务依赖。
+     * 锁定提示展示实时剩余时间（读 Redis TTL），而非固定时长。
      */
     private void checkLoginLocked(String username) {
         try {
-            Boolean locked = stringRedisTemplate.hasKey(LOGIN_LOCK_KEY + username);
-            if (Boolean.TRUE.equals(locked)) {
+            Long ttlSeconds = stringRedisTemplate.getExpire(
+                    LOGIN_LOCK_KEY + username, TimeUnit.SECONDS);
+            if (ttlSeconds != null && ttlSeconds > 0) {
                 throw new BusinessException(ResultCode.TOO_MANY_REQUESTS,
-                        "登录失败次数过多，请 " + WINDOW_MINUTES + " 分钟后再试");
+                        "登录失败次数过多，请 " + formatRemainTime(ttlSeconds) + " 后再试");
             }
         } catch (RedisConnectionFailureException e) {
             log.warn("Redis 不可用，跳过登录限流检查: {}", e.getMessage());
         }
+    }
+
+    /** 秒数格式化为「x 分 x 秒」：不足 1 分钟只显示秒，向上取整保证不为 0 秒 */
+    private String formatRemainTime(long seconds) {
+        long minutes = seconds / 60;
+        long secs = seconds % 60;
+        if (minutes > 0 && secs > 0) {
+            return minutes + " 分 " + secs + " 秒";
+        }
+        if (minutes > 0) {
+            return minutes + " 分钟";
+        }
+        // 不足 1 秒也至少显示 1 秒，避免出现「0 秒后再试」
+        return Math.max(secs, 1) + " 秒";
     }
 
     /**

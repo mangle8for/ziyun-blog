@@ -12,11 +12,17 @@ const userStore = useUserStore()
 
 const formRef = ref<FormInstance>()
 const loading = ref(false)
+/** 记住密码：默认勾选（token 持久化自动登录 + 记住用户名回填） */
+const remember = ref(true)
 
 const form = reactive({
   username: '',
   password: '',
 })
+
+// 回填上次勾选「记住密码」时记住的用户名（未记住则为空串）
+const rememberedUsername = localStorage.getItem('ziyun-blog-username') ?? ''
+form.username = rememberedUsername
 
 const rules: FormRules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
@@ -31,7 +37,7 @@ async function onSubmit() {
   await formRef.value.validate()
   loading.value = true
   try {
-    await userStore.login({ username: form.username, password: form.password })
+    await userStore.login({ username: form.username, password: form.password }, remember.value)
     ElMessage.success('欢迎回来')
     // 登录成功回跳来源页，缺省进管理后台
     const redirect = (route.query.redirect as string) || '/admin'
@@ -50,7 +56,6 @@ async function onSubmit() {
         <span class="brand-icon">✦</span>
         <span class="brand-name">紫云博客</span>
       </div>
-      <p class="login-sub">登录以进入管理后台</p>
       <p class="login-future">后续将支持手机号验证码注册游客账号、评论与 @Async 异步通知</p>
 
       <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="onSubmit">
@@ -66,6 +71,14 @@ async function onSubmit() {
             autocomplete="current-password"
           />
         </el-form-item>
+        <!--
+          记住密码（安全实现：不存密码明文）：
+          - 勾选：登录态持久化（关闭浏览器仍保持登录）+ 记住用户名下次回填
+          - 不勾选：仅本次会话有效（关闭浏览器即退出），浏览器公共设备建议不勾选
+        -->
+        <div class="remember-row">
+          <el-checkbox v-model="remember">记住密码</el-checkbox>
+        </div>
         <el-button class="submit-btn" type="primary" :loading="loading" round @click="onSubmit">
           登 录
         </el-button>
@@ -128,19 +141,24 @@ async function onSubmit() {
   color: var(--text-main);
 }
 
-.login-sub {
-  color: var(--text-muted);
-  margin: 0 0 28px;
-  font-size: 13px;
-  letter-spacing: 1px;
-}
-
 .login-future {
   color: var(--text-muted);
-  margin: -14px 0 24px;
+  margin: 0 0 24px;
   font-size: 12px;
   line-height: 1.6;
   opacity: 0.85;
+}
+
+/* 记住密码行：左对齐，与表单同宽 */
+.remember-row {
+  display: flex;
+  justify-content: flex-start;
+  margin: -4px 0 12px;
+}
+
+.remember-row :deep(.el-checkbox__label) {
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
 .submit-btn {
