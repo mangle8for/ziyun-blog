@@ -97,6 +97,11 @@ jobs:
           mkdir -p ~/.ssh
           printf '%s\n' "$SERVER_SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
+          # 校验私钥格式：若 Secret 粘贴时损坏（缺行/BOM/编码错误），
+          # 此处立即报错并提示，避免拖到 ssh 阶段才失败
+          if ! ssh-keygen -l -f ~/.ssh/deploy_key 2>/dev/null; then
+            echo "::error::SERVER_SSH_KEY 私钥格式无效（error in libcrypto）。请重新复制服务器上的完整私钥（必须含 BEGIN/END 两行，无多余空格），更新 Secret 后重跑。" && exit 1
+          fi
           # 固定服务器主机指纹，防止中间人攻击
           ssh-keyscan -p "${SERVER_PORT}" "${SERVER_HOST}" >> ~/.ssh/known_hosts 2>/dev/null
 
