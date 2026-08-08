@@ -4,11 +4,13 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import fun.ziyun.blogserver.common.ResultCode;
 import fun.ziyun.blogserver.dto.TagDTO;
+import fun.ziyun.blogserver.entity.ArticleStatus;
 import fun.ziyun.blogserver.entity.Tag;
 import fun.ziyun.blogserver.exception.BusinessException;
 import fun.ziyun.blogserver.mapper.ArticleTagMapper;
 import fun.ziyun.blogserver.mapper.TagMapper;
 import fun.ziyun.blogserver.service.TagService;
+import fun.ziyun.blogserver.vo.TagHotVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -32,6 +34,11 @@ public class TagServiceImpl extends ServiceImpl<TagMapper, Tag> implements TagSe
         return this.lambdaQuery()
                 .orderByDesc(Tag::getCreateTime)
                 .list();
+    }
+
+    @Override
+    public List<TagHotVO> listHot(int limit) {
+        return baseMapper.selectHotTags(ArticleStatus.PUBLISHED.getCode(), limit);
     }
 
     @Override

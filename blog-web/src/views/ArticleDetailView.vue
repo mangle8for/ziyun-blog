@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, List } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
 import 'md-editor-v3/lib/preview.css'
 
@@ -29,6 +29,8 @@ interface TocItem {
 
 const toc = ref<TocItem[]>([])
 const activeIndex = ref(-1)
+/** 移动端目录抽屉开关（宽屏目录为右侧吸顶栏，窄屏改抽屉） */
+const tocDrawerVisible = ref(false)
 /** 渲染后的标题 DOM 元素（按文档顺序，与 toc 一一对应） */
 let headingElements: HTMLElement[] = []
 
@@ -67,6 +69,12 @@ function jumpTo(index: number) {
   if (!el) return
   window.scrollTo({ top: el.getBoundingClientRect().top + window.scrollY - 72, behavior: 'smooth' })
   activeIndex.value = index
+}
+
+/** 移动端抽屉目录点击：先关抽屉再跳转，避免遮罩残留 */
+function jumpToFromDrawer(index: number) {
+  tocDrawerVisible.value = false
+  jumpTo(index)
 }
 
 /** 滚动监听：高亮当前阅读位置（视口内最靠上的标题） */
@@ -139,21 +147,10 @@ onBeforeUnmount(() => {
     </GlassCard>
 
     <template v-else-if="article">
-      <div class="article-layout">
-        <!-- 右侧目录：长文快速跳转（宽屏固定显示） -->
-        <aside class="article-toc" v-if="toc.length">
-          <div class="toc-title">目录</div>
-          <div
-            v-for="(item, index) in toc"
-            :key="index"
-            class="toc-item"
-            :class="{ active: activeIndex === index, [`lv-${item.level}`]: true }"
-            @click="jumpTo(index)"
-          >
-            {{ item.text }}
-          </div>
-        </aside>
-
+      <!-- 两栏布局：正文为主（minmax(0,1fr) 主列），目录为次（220px 次列跨两行）。
+           用显式 grid-template-areas 定位 —— 此前依赖 DOM 顺序自动布局，
+           导致目录抢占主列、正文被挤进窄列（主次错位）。 -->
+      <div class="article-layout" :class="{ 'has-toc': toc.length > 0 }">
         <!-- 正文卡片：毛玻璃大留白；no-hover 去掉 hover 微动，专注阅读 -->
         <GlassCard no-hover padded="lg" class="article-card">
         <!-- 头部：标题 + 元信息 -->
@@ -217,7 +214,49 @@ onBeforeUnmount(() => {
         </GlassCard>
         <div v-else class="nav-spacer"></div>
       </nav>
+
+        <!-- 右侧目录：长文快速跳转（宽屏吸顶显示；窄屏由下方抽屉替代） -->
+        <aside class="article-toc" v-if="toc.length">
+          <div class="toc-title">目录</div>
+          <div
+            v-for="(item, index) in toc"
+            :key="index"
+            class="toc-item"
+            :class="{ active: activeIndex === index, [`lv-${item.level}`]: true }"
+            @click="jumpTo(index)"
+          >
+            {{ item.text }}
+          </div>
+        </aside>
       </div>
+
+      <!-- 移动端目录：右下角悬浮按钮 + 抽屉（窄屏隐藏侧栏目录后的替代入口） -->
+      <button
+        v-if="toc.length"
+        class="toc-fab"
+        type="button"
+        aria-label="打开目录"
+        @click="tocDrawerVisible = true"
+      >
+        <el-icon :size="20"><List /></el-icon>
+      </button>
+      <el-drawer
+        v-model="tocDrawerVisible"
+        title="目录"
+        direction="rtl"
+        size="min(78vw, 320px)"
+        class="toc-drawer"
+      >
+        <div
+          v-for="(item, index) in toc"
+          :key="index"
+          class="toc-item"
+          :class="{ active: activeIndex === index, [`lv-${item.level}`]: true }"
+          @click="jumpToFromDrawer(index)"
+        >
+          {{ item.text }}
+        </div>
+      </el-drawer>
     </template>
   </div>
 </template>
@@ -228,16 +267,42 @@ onBeforeUnmount(() => {
   margin: 0 auto;
 }
 
-/* 正文 + 右侧目录的两栏布局（宽屏生效） */
+/*
+  正文 + 右侧目录布局：默认单栏（无目录时正文占满），
+  宽屏且有目录时切换为「正文主列 + 目录次列」两栏。
+  显式 grid-template-areas 定位，杜绝 DOM 顺序导致的主次错位；
+  minmax(0, 1fr) 允许主列收缩，防止长代码块把 grid 撑破。
+*/
 .article-layout {
   display: grid;
-  grid-template-columns: 1fr 220px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'content'
+    'nav';
   gap: 24px;
   align-items: start;
 }
 
+@media (min-width: 1081px) {
+  .article-layout.has-toc {
+    grid-template-columns: minmax(0, 1fr) 220px;
+    grid-template-areas:
+      'content toc'
+      'nav toc';
+  }
+}
+
+.article-card {
+  grid-area: content;
+}
+
+.article-nav {
+  grid-area: nav;
+}
+
 /* 右侧目录：吸顶、可滚动、跟随阅读位置高亮 */
 .article-toc {
+  grid-area: toc;
   position: sticky;
   top: 76px;
   max-height: calc(100vh - 100px);
@@ -424,13 +489,44 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   max-width: 100%;
 }
+/* 长代码块/表格横向滚动，防止撑破移动端窄栏 */
+.article-content :deep(pre) {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.article-content :deep(table) {
+  display: block;
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+/* 移动端目录悬浮按钮（宽屏隐藏，侧栏目录已可见） */
+.toc-fab {
+  display: none;
+  position: fixed;
+  right: 20px;
+  bottom: 28px;
+  z-index: 90;
+  /* 44px 以上触控区（移动端可点性） */
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  backdrop-filter: blur(var(--glass-blur));
+  -webkit-backdrop-filter: blur(var(--glass-blur));
+  color: var(--color-primary);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+}
 
 /* 上一篇/下一篇 */
 .article-nav {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 16px;
-  margin-top: 20px;
 }
 
 .nav-card {
@@ -478,13 +574,28 @@ onBeforeUnmount(() => {
   }
 }
 
-/* 窄屏隐藏右侧目录（正文单栏，避免挤压阅读宽度） */
+/* 抽屉目录条目：复用侧栏目录视觉，加大行高便于触屏点击 */
+.toc-drawer .toc-item {
+  padding: 10px 12px;
+  font-size: 14px;
+}
+.toc-drawer .toc-item.lv-2 {
+  padding-left: 22px;
+}
+.toc-drawer .toc-item.lv-3 {
+  padding-left: 34px;
+}
+.toc-drawer .toc-item.lv-4 {
+  padding-left: 46px;
+}
+
+/* 窄屏：隐藏右侧吸顶目录（正文单栏），改为悬浮按钮 + 抽屉目录 */
 @media (max-width: 1080px) {
-  .article-layout {
-    grid-template-columns: 1fr;
-  }
   .article-toc {
     display: none;
+  }
+  .toc-fab {
+    display: flex;
   }
 }
 </style>

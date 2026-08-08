@@ -3,6 +3,7 @@ package fun.ziyun.blogserver.service;
 import com.baomidou.mybatisplus.extension.service.IService;
 import fun.ziyun.blogserver.dto.TagDTO;
 import fun.ziyun.blogserver.entity.Tag;
+import fun.ziyun.blogserver.vo.TagHotVO;
 
 import java.util.List;
 
@@ -13,6 +14,9 @@ public interface TagService extends IService<Tag> {
 
     /** 全量标签列表（文章编辑器的标签选择器使用） */
     List<Tag> listAll();
+
+    /** 热门标签（按已发布文章数倒序取 TopN，首页筛选区展示用） */
+    List<TagHotVO> listHot(int limit);
 
     /** 新增标签（校验重名） */
     Long create(TagDTO dto);

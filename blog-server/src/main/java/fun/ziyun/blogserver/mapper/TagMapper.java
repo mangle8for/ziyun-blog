@@ -2,6 +2,7 @@ package fun.ziyun.blogserver.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
 import fun.ziyun.blogserver.entity.Tag;
+import fun.ziyun.blogserver.vo.TagHotVO;
 import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 
@@ -33,4 +34,22 @@ public interface TagMapper extends BaseMapper<Tag> {
             ORDER BY t.name ASC
             """)
     List<Tag> selectTagsByArticleId(@Param("articleId") Long articleId);
+
+    /**
+     * 热门标签：按「已发布文章数」倒序取前 limit 个。
+     * 经 article_tag 中间表 JOIN article 过滤出已发布且未删除的文章；
+     * 约定同 CategoryMapper.selectHotCategories（显式 deleted = 0、
+     * 状态值由 Service 传入、INNER JOIN 剔除 0 文章标签）。
+     */
+    @Select("""
+            SELECT t.id, t.name, COUNT(at.article_id) AS article_count
+            FROM tag t
+            INNER JOIN article_tag at ON at.tag_id = t.id
+            INNER JOIN article a ON a.id = at.article_id AND a.status = #{status} AND a.deleted = 0
+            WHERE t.deleted = 0
+            GROUP BY t.id, t.name, t.create_time
+            ORDER BY article_count DESC, t.create_time DESC
+            LIMIT #{limit}
+            """)
+    List<TagHotVO> selectHotTags(@Param("status") int status, @Param("limit") int limit);
 }

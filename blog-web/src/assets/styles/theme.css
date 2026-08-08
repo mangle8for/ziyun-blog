@@ -38,6 +38,8 @@
     linear-gradient(180deg, #eef2ec 0%, #e6ede4 100%);
   /* 阴影 */
   --shadow-card: 0 8px 32px rgba(47, 125, 90, 0.08);
+  /* hover 微光（GlassCard 等组件消费，亮/暗各定义避免硬编码色值） */
+  --shadow-hover: 0 12px 40px rgba(47, 125, 90, 0.14);
   /* 导航栏底色 */
   --bg-nav: rgba(244, 241, 234, 0.78);
 
@@ -70,6 +72,7 @@ html.dark {
     radial-gradient(700px 500px at 60% 90%, rgba(255, 157, 92, 0.08), transparent 50%),
     linear-gradient(180deg, #0b1220 0%, #101a30 100%);
   --shadow-card: 0 8px 32px rgba(0, 0, 0, 0.45);
+  --shadow-hover: 0 12px 40px rgba(124, 108, 240, 0.18);
   --bg-nav: rgba(11, 18, 32, 0.72);
 
   /* Element Plus 官方暗色变量已引入，这里只桥接主色 */

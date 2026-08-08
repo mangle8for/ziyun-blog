@@ -37,12 +37,8 @@ defineProps<{
 
 .glass-card:not(.no-hover):hover {
   border-color: var(--color-primary);
-  box-shadow: 0 12px 40px rgba(124, 108, 240, 0.18);
+  box-shadow: var(--shadow-hover);
   transform: translateY(-2px);
-}
-
-html:not(.dark) .glass-card:not(.no-hover):hover {
-  box-shadow: 0 12px 40px rgba(47, 125, 90, 0.14);
 }
 
 .pad-sm {

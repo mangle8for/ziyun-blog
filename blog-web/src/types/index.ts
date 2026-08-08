@@ -138,6 +138,21 @@ export interface CategoryPayload {
   description?: string
 }
 
+/** 热门分类项，对齐后端 CategoryHotVO（首页筛选区 TopN 展示） */
+export interface CategoryHot {
+  id: string
+  name: string
+  /** 已发布文章数（后端聚合为 Integer，JSON 中为 number） */
+  articleCount: number
+}
+
+/** 热门标签项，对齐后端 TagHotVO（首页筛选区 TopN 展示） */
+export interface TagHot {
+  id: string
+  name: string
+  articleCount: number
+}
+
 /** 标签新增/更新载荷 */
 export interface TagPayload {
   name: string

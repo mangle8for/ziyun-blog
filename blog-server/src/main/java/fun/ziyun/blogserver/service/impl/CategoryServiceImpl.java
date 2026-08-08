@@ -5,11 +5,13 @@ import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import fun.ziyun.blogserver.common.ResultCode;
 import fun.ziyun.blogserver.dto.CategoryDTO;
 import fun.ziyun.blogserver.entity.Article;
+import fun.ziyun.blogserver.entity.ArticleStatus;
 import fun.ziyun.blogserver.entity.Category;
 import fun.ziyun.blogserver.exception.BusinessException;
 import fun.ziyun.blogserver.mapper.ArticleMapper;
 import fun.ziyun.blogserver.mapper.CategoryMapper;
 import fun.ziyun.blogserver.service.CategoryService;
+import fun.ziyun.blogserver.vo.CategoryHotVO;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -31,6 +33,11 @@ public class CategoryServiceImpl extends ServiceImpl<CategoryMapper, Category> i
         return this.lambdaQuery()
                 .orderByDesc(Category::getCreateTime)
                 .list();
+    }
+
+    @Override
+    public List<CategoryHotVO> listHot(int limit) {
+        return baseMapper.selectHotCategories(ArticleStatus.PUBLISHED.getCode(), limit);
     }
 
     @Override

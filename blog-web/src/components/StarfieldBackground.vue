@@ -105,6 +105,46 @@ html.dark .starfield {
   }
 }
 
+/*
+ * 移动端降级：
+ *  - 星点原坐标按桌面 1900px 宽度散布，375px 手机上约八成星点在视口外，
+ *    氛围感大打折扣 —— 换成 0~400px 范围内的紧凑坐标，恢复可视密度；
+ *  - 漂移幅度从 -600px 减半，小屏上循环跳变的「瞬移」更不易察觉；
+ *  - 隐藏中间层（.stars-2），减少移动端常驻动画层的开销。
+ */
+@media (max-width: 768px) {
+  .stars-1 {
+    box-shadow:
+      40px 160px #fff, 320px 80px #cfd8ff, 90px 520px #fff, 260px 420px #aab6ff,
+      180px 240px #fff, 350px 600px #e6ecff, 60px 700px #fff, 220px 120px #cfd8ff,
+      140px 380px #fff, 300px 260px #aab6ff, 10px 460px #fff, 200px 640px #e6ecff,
+      340px 340px #fff, 110px 90px #cfd8ff, 250px 540px #fff, 370px 180px #aab6ff;
+  }
+
+  .stars-2 {
+    display: none;
+  }
+
+  .stars-3 {
+    box-shadow:
+      90px 300px #fff, 320px 200px #ffe9c8, 30px 140px #fff, 260px 480px #cfe0ff,
+      190px 60px #fff, 350px 380px #ffe9c8, 60px 560px #fff;
+  }
+
+  .stars {
+    animation-name: drift-mobile;
+  }
+}
+
+@keyframes drift-mobile {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(-300px);
+  }
+}
+
 /* 尊重「减少动态」系统偏好（无障碍） */
 @media (prefers-reduced-motion: reduce) {
   .stars {

@@ -4,6 +4,7 @@ import fun.ziyun.blogserver.common.Result;
 import fun.ziyun.blogserver.dto.CategoryDTO;
 import fun.ziyun.blogserver.entity.Category;
 import fun.ziyun.blogserver.service.CategoryService;
+import fun.ziyun.blogserver.vo.CategoryHotVO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -35,6 +37,15 @@ public class CategoryController {
     @GetMapping
     public Result<List<Category>> list() {
         return Result.ok(categoryService.listAll());
+    }
+
+    /**
+     * 热门分类（按已发布文章数倒序，首页筛选区 TopN 展示）。
+     * limit 钳制在 1~50：分类是个人博客的小数据维度，超过 50 无意义。
+     */
+    @GetMapping("/hot")
+    public Result<List<CategoryHotVO>> hot(@RequestParam(defaultValue = "8") @Min(1) int limit) {
+        return Result.ok(categoryService.listHot(Math.min(limit, 50)));
     }
 
     @PostMapping

@@ -4,6 +4,7 @@ import fun.ziyun.blogserver.common.Result;
 import fun.ziyun.blogserver.dto.TagDTO;
 import fun.ziyun.blogserver.entity.Tag;
 import fun.ziyun.blogserver.service.TagService;
+import fun.ziyun.blogserver.vo.TagHotVO;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
@@ -15,6 +16,7 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.util.List;
@@ -33,6 +35,15 @@ public class TagController {
     @GetMapping
     public Result<List<Tag>> list() {
         return Result.ok(tagService.listAll());
+    }
+
+    /**
+     * 热门标签（按已发布文章数倒序，首页筛选区 TopN 展示）。
+     * 约定同 CategoryController#hot。
+     */
+    @GetMapping("/hot")
+    public Result<List<TagHotVO>> hot(@RequestParam(defaultValue = "20") @Min(1) int limit) {
+        return Result.ok(tagService.listHot(Math.min(limit, 50)));
     }
 
     @PostMapping

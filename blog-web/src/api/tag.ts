@@ -1,9 +1,14 @@
 import { del, get, post, put } from '@/utils/request'
-import type { Tag, TagPayload } from '@/types'
+import type { Tag, TagHot, TagPayload } from '@/types'
 
 /** 全量标签列表（后端无 /all，GET /api/v1/tags 即全量） */
 export function getTagList() {
   return get<Tag[]>('/api/v1/tags')
+}
+
+/** 热门标签（按已发布文章数倒序 TopN，首页筛选区默认展示） */
+export function getHotTags(limit = 15) {
+  return get<TagHot[]>('/api/v1/tags/hot', { params: { limit } })
 }
 
 /** 新增标签 */
