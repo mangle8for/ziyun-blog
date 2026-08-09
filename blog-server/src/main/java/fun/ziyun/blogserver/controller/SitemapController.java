@@ -48,10 +48,11 @@ public class SitemapController {
         xml.append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
 
         // 静态页面：首页权重最高，分类/标签次之，关于页最低
-        appendUrl(xml, siteUrl + "/", "1.0", null);
-        appendUrl(xml, siteUrl + "/categories", "0.8", null);
-        appendUrl(xml, siteUrl + "/tags", "0.8", null);
-        appendUrl(xml, siteUrl + "/about", "0.6", null);
+        // changefreq 仅为提示（协议：hint 非命令）：文章站首页/归档页随内容更新
+        appendUrl(xml, siteUrl + "/", "1.0", null, "daily");
+        appendUrl(xml, siteUrl + "/categories", "0.8", null, "weekly");
+        appendUrl(xml, siteUrl + "/tags", "0.8", null, "weekly");
+        appendUrl(xml, siteUrl + "/about", "0.6", null, "monthly");
 
         // 文章详情：按更新时间倒序，全部已发布文章
         List<Article> articles = articleService.listPublishedForSitemap();
@@ -59,7 +60,7 @@ public class SitemapController {
             String lastmod = article.getUpdateTime() == null
                     ? null
                     : article.getUpdateTime().format(LAST_MOD);
-            appendUrl(xml, siteUrl + "/article/" + article.getId(), "0.9", lastmod);
+            appendUrl(xml, siteUrl + "/article/" + article.getId(), "0.9", lastmod, "monthly");
         }
 
         xml.append("</urlset>\n");
@@ -73,14 +74,42 @@ public class SitemapController {
                 .body(xml.toString().getBytes(StandardCharsets.UTF_8));
     }
 
-    /** 拼一条 &lt;url&gt; 记录（URL 均为站点固定前缀 + 数字 ID，无 XML 转义风险） */
-    private void appendUrl(StringBuilder xml, String loc, String priority, String lastmod) {
+    /** 拼一条 &lt;url&gt; 记录（URL 与 lastmod 均做 XML 实体转义，见协议 Entity escaping 节） */
+    private void appendUrl(StringBuilder xml, String loc, String priority, String lastmod, String changefreq) {
         xml.append("  <url>\n");
-        xml.append("    <loc>").append(loc).append("</loc>\n");
+        xml.append("    <loc>").append(escapeXml(loc)).append("</loc>\n");
         if (lastmod != null) {
-            xml.append("    <lastmod>").append(lastmod).append("</lastmod>\n");
+            xml.append("    <lastmod>").append(escapeXml(lastmod)).append("</lastmod>\n");
+        }
+        if (changefreq != null) {
+            xml.append("    <changefreq>").append(changefreq).append("</changefreq>\n");
         }
         xml.append("    <priority>").append(priority).append("</priority>\n");
         xml.append("  </url>\n");
+    }
+
+    /**
+     * XML 实体转义（sitemaps.org 协议 Entity escaping 要求）：
+     * & → &amp; / ' → &apos; / " → &quot; / &gt; / &lt;。
+     * 当前 URL 为纯 ASCII 数字 ID 天然安全，此函数为未来 URL 含
+     * 特殊字符（查询参数、非 ASCII）时的预防性保障。
+     */
+    private String escapeXml(String value) {
+        if (value == null) {
+            return "";
+        }
+        StringBuilder sb = new StringBuilder(value.length() + 16);
+        for (int i = 0; i < value.length(); i++) {
+            char c = value.charAt(i);
+            switch (c) {
+                case '&' -> sb.append("&amp;");
+                case '<' -> sb.append("&lt;");
+                case '>' -> sb.append("&gt;");
+                case '"' -> sb.append("&quot;");
+                case '\'' -> sb.append("&apos;");
+                default -> sb.append(c);
+            }
+        }
+        return sb.toString();
     }
 }
