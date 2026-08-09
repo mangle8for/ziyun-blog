@@ -14,8 +14,7 @@
 # 依赖的仓库 Secrets（Settings -> Secrets and variables -> Actions）：
 #   SERVER_HOST / SERVER_PORT / SERVER_USER / SERVER_SSH_KEY
 #   DOMAIN / MYSQL_ROOT_PASSWORD / DB_PASSWORD / JWT_SECRET
-# 注：OSS 凭据不需要配置 —— 生产默认复用 application.yml 中的开发凭据
-#     （docker-compose.yml 提供默认值，如需独立凭据在服务器 .env 覆盖）
+#   OSS_ACCESS_KEY_ID / OSS_ACCESS_KEY_SECRET（必填，docker-compose 已强制）
 # ============================================================
 name: CI/CD Deploy
 
@@ -113,6 +112,8 @@ jobs:
           DB_USERNAME=blog
           DB_PASSWORD=${{ secrets.DB_PASSWORD }}
           JWT_SECRET=${{ secrets.JWT_SECRET }}
+          OSS_ACCESS_KEY_ID=${{ secrets.OSS_ACCESS_KEY_ID }}
+          OSS_ACCESS_KEY_SECRET=${{ secrets.OSS_ACCESS_KEY_SECRET }}
           CORS_ALLOWED_ORIGINS=
           EOF
 
