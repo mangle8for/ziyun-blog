@@ -2,7 +2,6 @@ package fun.ziyun.blogserver.controller;
 
 import fun.ziyun.blogserver.common.Result;
 import fun.ziyun.blogserver.dto.LoginDTO;
-import fun.ziyun.blogserver.dto.RegisterDTO;
 import fun.ziyun.blogserver.dto.UpdatePasswordDTO;
 import fun.ziyun.blogserver.dto.UpdateProfileDTO;
 import fun.ziyun.blogserver.security.AuthUser;
@@ -39,12 +38,6 @@ import org.springframework.web.multipart.MultipartFile;
 public class AuthController {
 
     private final AuthService authService;
-
-    /** 公开注册（为未来评论系统预留，注册用户无管理权限） */
-    @PostMapping("/register")
-    public Result<Long> register(@RequestBody @Valid RegisterDTO dto) {
-        return Result.ok(authService.register(dto));
-    }
 
     /** 公开登录：成功返回 token + 用户信息 */
     @PostMapping("/login")

@@ -100,13 +100,6 @@ export interface LoginPayload {
   password: string
 }
 
-/** 注册表单 */
-export interface RegisterPayload {
-  username: string
-  password: string
-  nickname?: string
-}
-
 /** 登录成功返回：token + 用户信息一次返回 */
 export interface LoginResult {
   token: string

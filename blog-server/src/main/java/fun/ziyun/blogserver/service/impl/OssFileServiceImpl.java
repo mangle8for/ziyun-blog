@@ -14,9 +14,12 @@ import org.springframework.util.StringUtils;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.HashMap;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 
@@ -33,12 +36,14 @@ import java.util.UUID;
  *   - 未来加 MinioFileServiceImpl 标注 havingValue="minio"，
  *     两个实现互斥共存，改配置即切换，零代码改动。
  *
- * 上传安全三连：
+ * 上传安全四连：
  *   1. 类型白名单：只允许图片扩展名（jpg/jpeg/png/webp/gif），
  *      防上传可执行文件/脚本后通过 OSS 静态域名被当 HTML 执行（XSS）；
  *   2. 大小限制 5MB：防存储滥用与带宽消耗；
  *   3. UUID 重命名：丢弃用户原始文件名 —— 原始名可能含路径穿越
- *      （../）、恶意脚本片段，且重名会互相覆盖。
+ *      （../）、恶意脚本片段，且重名会互相覆盖；
+ *   4. 内容魔数校验：扩展名可被改名伪造（把脚本改名 x.jpg 上传），
+ *      读取文件头与真实图片签名比对，内容不符直接拒绝。
  * </pre>
  */
 @Slf4j
@@ -51,6 +56,22 @@ public class OssFileServiceImpl implements FileService {
 
     /** 上传大小上限：5MB */
     private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
+
+    /**
+     * 图片文件头魔数（file signature）签名表。
+     * 为什么手写魔数而非 ImageIO.read()：JDK 自带 ImageIO 不支持 webp，
+     * 会误拒合法 webp；按字节比对签名对全部允许格式统一可靠。
+     * webp 为 RIFF 容器，额外校验偏移 8 处的 "WEBP" 四字节。
+     */
+    private static final Map<String, byte[][]> EXT_MAGICS = new HashMap<>() {{
+        put("jpg", new byte[][]{{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}});
+        put("jpeg", new byte[][]{{(byte) 0xFF, (byte) 0xD8, (byte) 0xFF}});
+        put("png", new byte[][]{{(byte) 0x89, 0x50, 0x4E, 0x47}});
+        put("gif", new byte[][]{{0x47, 0x49, 0x46, 0x38}});
+        put("webp", new byte[][]{{0x52, 0x49, 0x46, 0x46}});
+    }};
+    /** webp 特有：RIFF 头部偏移 8 处必须是 "WEBP" */
+    private static final byte[] WEBP_TAG = {'W', 'E', 'B', 'P'};
 
     private final OssProperties properties;
     private final OSS ossClient;
@@ -87,7 +108,7 @@ public class OssFileServiceImpl implements FileService {
         return "https://" + properties.getBucket() + "." + host + "/" + key;
     }
 
-    /** 上传前置校验（空文件/类型/大小） */
+    /** 上传前置校验（空文件/大小/类型/内容魔数） */
     private void validate(MultipartFile file) {
         if (file == null || file.isEmpty()) {
             throw new BusinessException(ResultCode.BAD_REQUEST, "文件不能为空");
@@ -100,6 +121,46 @@ public class OssFileServiceImpl implements FileService {
             throw new BusinessException(ResultCode.BAD_REQUEST,
                     "仅支持图片类型: " + String.join("/", ALLOWED_EXTENSIONS));
         }
+        // 内容魔数校验：防「改名绕过扩展名白名单」（如把 HTML/脚本改成 x.jpg）。
+        // 只读文件头 12 字节，不消费完整流（后续 upload 还要读一遍）。
+        byte[] head = new byte[12];
+        try (InputStream in = file.getInputStream()) {
+            int read = in.read(head);
+            if (read < 4 || !matchesMagic(head, EXT_MAGICS.get(ext))) {
+                throw new BusinessException(ResultCode.BAD_REQUEST,
+                        "文件内容与图片格式不符，请重新上传");
+            }
+            if ("webp".equals(ext) && !matchesMagicAt(head, 8, WEBP_TAG)) {
+                throw new BusinessException(ResultCode.BAD_REQUEST,
+                        "文件内容与图片格式不符，请重新上传");
+            }
+        } catch (IOException e) {
+            log.warn("上传文件头读取失败: {}", e.getMessage());
+            throw new BusinessException(ResultCode.BAD_REQUEST, "文件读取失败，请重新上传");
+        }
+    }
+
+    /** 文件头是否匹配任一魔数签名（按字节前缀比对） */
+    private boolean matchesMagic(byte[] head, byte[][] signatures) {
+        for (byte[] sig : signatures) {
+            if (matchesMagicAt(head, 0, sig)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** head[offset..] 是否以 signature 开头 */
+    private boolean matchesMagicAt(byte[] head, int offset, byte[] signature) {
+        if (offset + signature.length > head.length) {
+            return false;
+        }
+        for (int i = 0; i < signature.length; i++) {
+            if (head[offset + i] != signature[i]) {
+                return false;
+            }
+        }
+        return true;
     }
 
     /** 提取扩展名（小写）；无扩展名/隐藏文件（.gitignore 之类）返回空串 */

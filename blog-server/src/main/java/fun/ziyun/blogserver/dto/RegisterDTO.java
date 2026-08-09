@@ -6,7 +6,7 @@ import jakarta.validation.constraints.Size;
 import lombok.Data;
 
 /**
- * 注册请求体。
+ * 新建用户请求体（管理员代建，POST /api/v1/users）。
  *
  * <p>设计说明（用户名/密码格式约束）：</p>
  * <pre>
@@ -14,6 +14,7 @@ import lombok.Data;
  * 混入空格、emoji 等造成显示与匹配混乱，也杜绝 SQL/脚本注入面。
  * 密码：6~32 位 —— 长度下限防弱口令，上限防超长哈希计算攻击
  * （BCrypt 对超长输入的处理开销异常，是已知的 DoS 向量）。
+ * 注：公开注册接口已移除（安全评审后决策），本 DTO 仅服务管理端。
  * </pre>
  */
 @Data

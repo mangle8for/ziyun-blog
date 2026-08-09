@@ -91,8 +91,11 @@ mybatis-plus:
 # ============================================================
 blog:
   jwt:
-    # 签名密钥：生产环境必须通过环境变量 JWT_SECRET 注入（>= 32 字节）
-    secret: ${JWT_SECRET:ziyun-blog-dev-secret-key-please-change-in-prod}
+    # 签名密钥：必须通过环境变量 JWT_SECRET 注入（>= 32 字节）。
+    # ⚠️ 历史版本曾有硬编码开发默认值并随公开仓库泄露，现已移除；
+    # 生产（application-prod.yml）为必填无默认，本地开发请在
+    # application-dev.yml 配置或经 IDE 环境变量注入。
+    secret: ${JWT_SECRET:}
     # token 有效期 72 小时（博客站低频访问，无需短时效）
     expire-hours: 72
   # ---------- 文件存储抽象层 ----------
@@ -105,20 +108,21 @@ blog:
     oss:
       # 区域 Endpoint（不带 bucket 前缀，SDK 拼接）
       endpoint: https://oss-cn-beijing.aliyuncs.com
-      # ⚠️ 安全提醒：以下为开发环境凭据（写在 yml 便于本地联调）。
-      # 生产环境必须用环境变量覆盖（见 application-prod.yml），
-      # 且 AccessKey 建议在 RAM 子账号上创建、仅授予本 bucket 权限。
-      access-key-id: ${OSS_ACCESS_KEY_ID:LTAI5t5t5N2ApfVUeqsJwj5W}
-      access-key-secret: ${OSS_ACCESS_KEY_SECRET:oRXVhydGXkXKECUyEUE9WhfO6DLpXm}
+      # ⚠️ 安全提醒：凭据只允许经环境变量注入（GitHub Actions Secrets ->
+      # 服务器 .env -> 容器环境变量）。历史硬编码的开发 AK/SK 已随公开
+      # 仓库泄露，务必在阿里云控制台轮换后，将新凭据配置到本地环境变量
+      # （RAM 子账号，仅授予本 bucket 上传/删除权限）。
+      access-key-id: ${OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
       # 桶名（需在控制台预先创建，且设为「公共读」才能直接 URL 访问）
-      bucket: ziyun-webstudy-project
+      bucket: ${OSS_BUCKET:ziyun-webstudy-project}
       # 桶内文件统一放 blog 目录下（OSS 无目录概念，key 前缀模拟，
       # 便于与桶内其他业务隔离、按前缀批量管理）
-      base-path: blog
+      base-path: ${OSS_BASE_PATH:blog}
   security:
     # 认证白名单：完全公开的路径（无需任何登录态）。
     # 注意：/auth/me 与 /auth/logout 需要「已登录」而非公开，
     # 故不在这里配置，而在 SecurityConfig 中用 authenticated() 单独声明。
+    # 公开注册已移除，白名单仅剩登录。
     ignore-paths:
       - /api/v1/auth/login
-      - /api/v1/auth/register

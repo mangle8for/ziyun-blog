@@ -323,11 +323,18 @@ git push -u origin main
 | `MYSQL_ROOT_PASSWORD` | 部署脚本生成的强密码 |
 | `DB_PASSWORD` | 部署脚本生成的强密码 |
 | `JWT_SECRET` | 部署脚本生成的随机串（>= 32 字节） |
+| `OSS_ACCESS_KEY_ID` | RAM 子账号 AK（**必填**，仅授予本 bucket 上传/删除权限） |
+| `OSS_ACCESS_KEY_SECRET` | RAM 子账号 SK（**必填**） |
 
-> 对象存储：生产默认复用 `application.yml` 中的开发凭据（OSS 华北2 +
-> bucket `ziyun-webstudy-project`，默认值见 `deploy/docker-compose.yml`），
-> 无需配置 OSS Secrets。如需独立生产凭据，在服务器 `/opt/ziyun-blog/.env`
-> 中追加覆盖即可（`OSS_ACCESS_KEY_ID=` / `OSS_ACCESS_KEY_SECRET=` 等）。
+> ⚠️ 对象存储凭据**必填**：`deploy/docker-compose.yml` 已改为
+> `${OSS_ACCESS_KEY_ID:?}` / `${OSS_ACCESS_KEY_SECRET:?}` 必填语法，
+> 缺失时 compose 直接报错退出（防历史「默认复用开发凭据」的漏洞复现）。
+> 历史硬编码的开发 AK/SK 曾随公开仓库泄露——**务必已在阿里云控制台轮换**，
+> 并把新凭据填入上述 Secrets；部署时 Actions 自动注入服务器 `.env`。
+>
+> 本地开发（dev profile）：JWT 与 OSS 凭据默认值见 `application-dev.yml`，
+> 本地联调可在 IDE 环境变量中注入（JWT_SECRET 已提供 dev 默认值；
+> OSS 凭据未配置时仅上传图片接口不可用）。
 
 ## 12. 首次部署与验证
 

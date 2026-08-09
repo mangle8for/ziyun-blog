@@ -1,9 +1,7 @@
 package fun.ziyun.blogserver.service.impl;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import fun.ziyun.blogserver.common.ResultCode;
 import fun.ziyun.blogserver.dto.LoginDTO;
-import fun.ziyun.blogserver.dto.RegisterDTO;
 import fun.ziyun.blogserver.dto.UpdatePasswordDTO;
 import fun.ziyun.blogserver.dto.UpdateProfileDTO;
 import fun.ziyun.blogserver.entity.User;
@@ -89,29 +87,6 @@ public class AuthServiceImpl implements AuthService {
     /** JWT 有效期（小时），与 token 生命周期保持一致（Redis key 同步过期） */
     @Value("${blog.jwt.expire-hours}")
     private long expireHours;
-
-    @Override
-    public Long register(RegisterDTO dto) {
-        // 重名校验：数据库唯一索引兜底，业务层先给友好提示
-        Long count = userMapper.selectCount(new LambdaQueryWrapper<User>()
-                .eq(User::getUsername, dto.getUsername()));
-        if (count != null && count > 0) {
-            throw new BusinessException(ResultCode.CONFLICT, "用户名已存在：" + dto.getUsername());
-        }
-
-        User user = new User();
-        user.setUsername(dto.getUsername());
-        // BCrypt 加密后入库（每次加密结果不同，见 SecurityConfig 说明）
-        user.setPassword(passwordEncoder.encode(dto.getPassword()));
-        // 昵称缺省回退用户名，保证展示不为空
-        user.setNickname(dto.getNickname() == null || dto.getNickname().isBlank()
-                ? dto.getUsername() : dto.getNickname());
-        // 注册用户固定普通角色；管理员只能由预置/手动提升，防越权注册
-        user.setRole(0);
-        user.setStatus(1);
-        userMapper.insert(user);
-        return user.getId();
-    }
 
     @Override
     public LoginVO login(LoginDTO dto) {

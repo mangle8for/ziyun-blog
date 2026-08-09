@@ -1,7 +1,6 @@
 package fun.ziyun.blogserver.service;
 
 import fun.ziyun.blogserver.dto.LoginDTO;
-import fun.ziyun.blogserver.dto.RegisterDTO;
 import fun.ziyun.blogserver.dto.UpdatePasswordDTO;
 import fun.ziyun.blogserver.dto.UpdateProfileDTO;
 import fun.ziyun.blogserver.vo.LoginVO;
@@ -9,12 +8,9 @@ import fun.ziyun.blogserver.vo.UserVO;
 import org.springframework.web.multipart.MultipartFile;
 
 /**
- * 认证服务：注册/登录/登出/当前用户/个人信息/改密/头像。
+ * 认证服务：登录/登出/当前用户/个人信息/改密/头像。
  */
 public interface AuthService {
-
-    /** 注册：创建普通用户（role=0），返回用户 ID */
-    Long register(RegisterDTO dto);
 
     /** 登录：校验密码 + 签发 JWT + 写入 Redis 登录态 */
     LoginVO login(LoginDTO dto);

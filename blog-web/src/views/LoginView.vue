@@ -56,7 +56,7 @@ async function onSubmit() {
         <span class="brand-icon">✦</span>
         <span class="brand-name">紫云博客</span>
       </div>
-      <p class="login-future">后续将支持手机号验证码注册游客账号、评论与 @Async 异步通知</p>
+      <p class="login-future">评论与异步通知功能即将上线</p>
 
       <el-form ref="formRef" :model="form" :rules="rules" size="large" @keyup.enter="onSubmit">
         <el-form-item prop="username">

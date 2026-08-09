@@ -7,3 +7,15 @@ mybatis-plus:
     # 原生 MyBatis 时代要额外引入 log4j 并手写 log4j2.xml 配置；
     # MP 这里一行搞定，学习调试时观察每次请求生成的 SQL 非常直观
     log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+
+blog:
+  jwt:
+    # 本地开发密钥（仅 dev profile 生效，生产由 application-prod.yml 强制注入）。
+    # 该值只用于本地签名，对生产无影响 —— 生产配置不读取此文件。
+    secret: ${JWT_SECRET:ziyun-blog-local-dev-secret-please-change}
+  storage:
+    oss:
+      # 本地开发凭据：经 IDE 环境变量注入（阿里云控制台轮换后的新 AK/SK，
+      # RAM 子账号最小权限）。未配置时上传图片接口不可用，其余功能正常。
+      access-key-id: ${OSS_ACCESS_KEY_ID:}
+      access-key-secret: ${OSS_ACCESS_KEY_SECRET:}
