@@ -1,6 +1,6 @@
-# 紫云博客 · 搜索引擎爬取规则
-# 全站允许抓取；Sitemap 由后端动态生成（nginx 反代 /api 前缀，公开可访问）
+# Ziyun Blog robots.txt
+# Allow full crawl; Sitemap is served by nginx at /sitemap.xml (backend generated)
 User-agent: *
 Allow: /
 
-Sitemap: https://ziyun.fun/api/v1/sitemap.xml
+Sitemap: https://ziyun.fun/sitemap.xml
