@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useHead } from '@unhead/vue'
 import { useRouter } from 'vue-router'
 
 import { getArticlePage } from '@/api/article'
@@ -13,6 +14,22 @@ const categories = ref<Category[]>([])
 const activeId = ref<string>('')
 const articles = ref<ArticleListItem[]>([])
 const loading = ref(false)
+
+/** 当前选中的分类对象（用于标题/描述） */
+const activeCategory = computed(() => categories.value.find((c) => c.id === activeId.value))
+
+// SEO：未选中时用通用标题，选中后用分类名
+useHead({
+  title: () => (activeCategory.value ? `分类：${activeCategory.value.name}` : '分类'),
+  meta: () => [
+    {
+      name: 'description',
+      content: activeCategory.value?.description
+        ? `分类「${activeCategory.value.name}」下的文章：${activeCategory.value.description}`
+        : '按主题归档的星域 —— 紫云博客文章分类浏览。',
+    },
+  ],
+})
 
 async function loadCategories() {
   categories.value = await getCategoryList()

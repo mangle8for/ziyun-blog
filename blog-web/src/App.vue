@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onMounted } from 'vue'
+import { useHead } from '@unhead/vue'
 // 中文语言包：按需引入模式下不再全量 app.use(ElementPlus)，
 // 改用 el-config-provider 在根组件提供 locale（el-pagination 等内置文案生效）
 import zhCn from 'element-plus/es/locale/lang/zh-cn'
@@ -9,6 +10,13 @@ import { useTheme } from '@/utils/theme'
 
 const userStore = useUserStore()
 useTheme()
+
+// 全局标题模板：各页面只设置自己的标题，统一追加站点名；
+// 未设置标题的页面（如首页）使用默认文案
+useHead({
+  titleTemplate: (title?: string) =>
+    title ? `${title} · 紫云博客` : '紫云博客 · 星海拾遗',
+})
 
 /**
  * 应用级初始化：

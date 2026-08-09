@@ -86,6 +86,16 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     }
 
     @Override
+    public List<Article> listPublishedForSitemap() {
+        return this.lambdaQuery()
+                // 只查 Sitemap 需要的列（避免把 LONGTEXT 正文整块拉回来）
+                .select(Article::getId, Article::getUpdateTime)
+                .eq(Article::getStatus, ArticleStatus.PUBLISHED.getCode())
+                .orderByDesc(Article::getUpdateTime)
+                .list();
+    }
+
+    @Override
     public ArticleDetailVO getManageDetail(Long id) {
         // 管理端编辑器回填需要草稿内容，不限制发布状态；
         // 上一篇/下一篇是前台导航语义，管理端不需要（且基于发布状态排序）

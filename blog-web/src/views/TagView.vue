@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import { useHead } from '@unhead/vue'
 import { useRouter } from 'vue-router'
 
 import { getArticlePage } from '@/api/article'
@@ -13,6 +14,22 @@ const tags = ref<Tag[]>([])
 const activeId = ref<string>('')
 const articles = ref<ArticleListItem[]>([])
 const loading = ref(false)
+
+/** 当前选中的标签对象（用于标题） */
+const activeTag = computed(() => tags.value.find((t) => t.id === activeId.value))
+
+// SEO：未选中时用通用标题，选中后用标签名
+useHead({
+  title: () => (activeTag.value ? `标签：#${activeTag.value.name}` : '标签'),
+  meta: () => [
+    {
+      name: 'description',
+      content: activeTag.value
+        ? `标签「${activeTag.value.name}」下的文章汇总。`
+        : '散落在星海中的关键词 —— 紫云博客文章标签浏览。',
+    },
+  ],
+})
 
 async function loadTags() {
   tags.value = await getTagList()

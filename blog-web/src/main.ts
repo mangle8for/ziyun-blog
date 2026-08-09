@@ -1,5 +1,7 @@
 import { createApp } from 'vue'
 import { createPinia } from 'pinia'
+// SEO：路由级动态 title/meta/JSON-LD（3.x 中 createHead 从 /client 子路径导出）
+import { createHead } from '@unhead/vue/client'
 // Element Plus 暗色变量：配合 html.dark class 切换（见 utils/theme.ts）。
 // 按需引入模式下组件样式由 unplugin 注入，此处只需官方暗色变量全集。
 import 'element-plus/theme-chalk/dark/css-vars.css'
@@ -18,5 +20,7 @@ const app = createApp(App)
 
 app.use(createPinia())
 app.use(router)
+// SEO：路由级动态 title/meta/JSON-LD 管理（各视图 useHead 设置）
+app.use(createHead())
 
 app.mount('#app')

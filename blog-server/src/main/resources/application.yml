@@ -90,6 +90,8 @@ mybatis-plus:
 # 业务自定义配置（以 blog 为前缀的自定义命名空间）
 # ============================================================
 blog:
+  # 站点根地址：Sitemap 生成用（与 nginx server_name 一致；生产可经 SITE_URL 覆盖）
+  site-url: ${SITE_URL:https://ziyun.fun}
   jwt:
     # 签名密钥：必须通过环境变量 JWT_SECRET 注入（>= 32 字节）。
     # ⚠️ 历史版本曾有硬编码开发默认值并随公开仓库泄露，现已移除；

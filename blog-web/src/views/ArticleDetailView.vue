@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useHead } from '@unhead/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, List } from '@element-plus/icons-vue'
 import { MdPreview } from 'md-editor-v3'
@@ -18,6 +19,54 @@ const { theme } = useTheme()
 const article = ref<ArticleDetail | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
+
+// ==================== SEO：动态 title/meta/canonical/JSON-LD ====================
+// 用响应式函数形式：article 异步加载/切换（上一篇下一篇）后自动更新，
+// 组件卸载时 unhead 自动清理本组件设置的标签。
+useHead({
+  title: () => (article.value ? article.value.title : '文章'),
+  meta: () => {
+    const a = article.value
+    if (!a) return []
+    const description = a.summary || a.title
+    return [
+      { name: 'description', content: description },
+      { property: 'og:title', content: a.title },
+      { property: 'og:description', content: description },
+      { property: 'og:type', content: 'article' },
+      { property: 'og:url', content: `${window.location.origin}/article/${a.id}` },
+      ...(a.cover ? [{ property: 'og:image', content: a.cover }] : []),
+      { name: 'twitter:card', content: a.cover ? 'summary_large_image' : 'summary' },
+    ]
+  },
+  link: () =>
+    article.value
+      ? [{ rel: 'canonical', href: `${window.location.origin}/article/${article.value.id}` }]
+      : [],
+  script: () => {
+    const a = article.value
+    if (!a) return []
+    // BlogPosting 结构化数据（Google 富结果：标题/日期/作者/图片直接展示）
+    const jsonLd = {
+      '@context': 'https://schema.org',
+      '@type': 'BlogPosting',
+      headline: a.title,
+      description: a.summary || a.title,
+      datePublished: a.createTime ? a.createTime.replace(' ', 'T') : undefined,
+      dateModified: a.updateTime ? a.updateTime.replace(' ', 'T') : undefined,
+      author: { '@type': 'Person', name: a.authorName || '紫云' },
+      ...(a.cover ? { image: a.cover } : {}),
+      url: `${window.location.origin}/article/${a.id}`,
+    }
+    return [
+      {
+        type: 'application/ld+json',
+        // unhead 3.x：数据脚本用 textContent（对象自动序列化为 JSON）
+        textContent: jsonLd,
+      },
+    ]
+  },
+})
 
 // ==================== 目录（TOC） ====================
 

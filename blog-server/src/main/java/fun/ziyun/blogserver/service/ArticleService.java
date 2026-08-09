@@ -7,6 +7,8 @@ import fun.ziyun.blogserver.entity.Article;
 import fun.ziyun.blogserver.vo.ArticleDetailVO;
 import fun.ziyun.blogserver.vo.ArticleListItemVO;
 
+import java.util.List;
+
 /**
  * 文章服务接口。
  *
@@ -37,6 +39,12 @@ public interface ArticleService extends IService<Article> {
 
     /** 公开详情（仅已发布），带上一篇/下一篇导航 */
     ArticleDetailVO getPublishedDetail(Long id);
+
+    /**
+     * Sitemap 用：已发布文章的轻量清单（仅 id/updateTime，按更新时间倒序）。
+     * 不走列表 VO 组装（免去分类/标签/作者关联查询），Sitemap 只需 URL 与 lastmod。
+     */
+    List<Article> listPublishedForSitemap();
 
     /** 管理端详情（含草稿，编辑器回填用；不拼上一篇/下一篇导航） */
     ArticleDetailVO getManageDetail(Long id);

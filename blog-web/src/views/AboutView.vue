@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { h, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
+import { useHead } from '@unhead/vue'
 import { Link, Message } from '@element-plus/icons-vue'
 
 import { getArticlePage } from '@/api/article'
@@ -46,6 +47,14 @@ const skillsVisible = ref(false)
 const statsRevealed = ref(false)
 /** 头像缺省：昵称首字渐变占位 */
 const nicknameInitial = profile.nickname.slice(0, 1)
+
+// SEO：关于页标题与描述
+useHead({
+  title: '关于',
+  meta: [
+    { name: 'description', content: `${profile.signature} —— ${profile.bio}` },
+  ],
+})
 
 // ==================== 站点统计（现有公开接口实时取数） ====================
 
