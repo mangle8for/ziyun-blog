@@ -5,10 +5,12 @@ import fun.ziyun.blogserver.service.ArticleService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import java.nio.charset.StandardCharsets;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
@@ -40,7 +42,7 @@ public class SitemapController {
     private String siteUrl;
 
     @GetMapping(produces = MediaType.APPLICATION_XML_VALUE)
-    public String sitemap() {
+    public ResponseEntity<byte[]> sitemap() {
         StringBuilder xml = new StringBuilder(2048);
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
@@ -61,7 +63,14 @@ public class SitemapController {
         }
 
         xml.append("</urlset>\n");
-        return xml.toString();
+
+        // 返回 byte[]：ByteArrayHttpMessageConverter 不会像 String 转换器那样
+        // 追加 charset 参数 —— GSC 对 "application/xml;charset=UTF-8" 这类
+        // 带参数 Content-Type 存在解析兼容性问题（曾报「无法读取站点地图」），
+        // 显式返回严格无参数的 application/xml 最稳。
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_XML)
+                .body(xml.toString().getBytes(StandardCharsets.UTF_8));
     }
 
     /** 拼一条 &lt;url&gt; 记录（URL 均为站点固定前缀 + 数字 ID，无 XML 转义风险） */
