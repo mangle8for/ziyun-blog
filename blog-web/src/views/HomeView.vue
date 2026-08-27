@@ -55,6 +55,46 @@ function scrollToStream() {
   streamEl.value?.scrollIntoView({ behavior: 'smooth' })
 }
 
+// ==================== 首屏氛围动画 ====================
+/** 首屏主标题（逐字入场动画用） */
+const HERO_TITLE = '紫云博客'
+
+/**
+ * mulberry32 伪随机（固定种子）：光点位置/节奏确定可复现，
+ * 刷新不跳变，符合星海恒定感的直觉。
+ */
+function mulberry32(a: number) {
+  return function () {
+    a |= 0
+    a = (a + 0x6d2b79f5) | 0
+    let t = Math.imul(a ^ (a >>> 15), 1 | a)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+}
+
+/**
+ * 首屏浮游光点：暗色主题是缓慢上浮的星尘，亮色主题是林间萤火。
+ * 12 颗错峰漂移 + 闪烁（纯 CSS 动画，固定种子布点）。
+ */
+const heroMotes = computed(() => {
+  const rnd = mulberry32(0xc0ffee)
+  return Array.from({ length: 12 }, (_, i) => {
+    const size = 2 + Math.round(rnd() * 3)
+    return {
+      id: i,
+      style: {
+        left: `${6 + rnd() * 88}%`,
+        top: `${10 + rnd() * 72}%`,
+        width: `${size}px`,
+        height: `${size}px`,
+        '--dur': `${7 + ((rnd() * 8) | 0)}s`,
+        '--delay': `${-((rnd() * 10) | 0)}s`,
+      },
+    }
+  })
+})
+
 // ==================== 数据 ====================
 const articles = ref<ArticleListItem[]>([])
 const total = ref(0)
@@ -244,11 +284,35 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="home-view">
-    <!-- ============ 首屏：全视口英雄区（打字机 + 地平线光带） ============ -->
+    <!-- ============ 首屏：全视口英雄区（逐字标题 + 打字机 + 流星 + 地平线光带） ============ -->
     <section class="hero-screen">
       <div class="hero-grid" aria-hidden="true"></div>
 
-      <h1 class="hero-title">紫云博客</h1>
+      <!-- 浮游光点：暗色 = 上浮星尘 / 亮色 = 林间萤火 -->
+      <span
+        v-for="m in heroMotes"
+        :key="m.id"
+        class="hero-mote"
+        :style="m.style"
+        aria-hidden="true"
+      ></span>
+
+      <!-- 流星：错峰周期性划过 -->
+      <span class="meteor meteor-a" aria-hidden="true"></span>
+      <span class="meteor meteor-b" aria-hidden="true"></span>
+
+      <h1 class="hero-title">
+        <span
+          v-for="(ch, i) in HERO_TITLE"
+          :key="i"
+          class="hero-char"
+          :style="{
+            animationDelay: `${300 + i * 130}ms`,
+            backgroundPosition: `${(i * 100) / (HERO_TITLE.length - 1)}% 0`,
+          }"
+          >{{ ch }}</span
+        >
+      </h1>
       <p class="hero-typed" aria-live="polite">
         {{ typedText }}<span class="caret" aria-hidden="true"></span>
       </p>
@@ -258,7 +322,7 @@ onBeforeUnmount(() => {
         <span>搜索文章 / 分类 / 标签…</span>
       </button>
 
-      <div class="horizon" aria-hidden="true"></div>
+      <div class="horizon" aria-hidden="true"><i class="horizon-pulse"></i></div>
 
       <button
         type="button"
@@ -460,13 +524,15 @@ onBeforeUnmount(() => {
 }
 
 /* ============================================================
-   首屏英雄区：全视口高度（扣除吸顶导航），负 margin 抵消内容区
-   上下留白并横向出血到视口边缘。亮色 = 晨光营地网格，暗色 = 深空坐标网格。
+   首屏英雄区：全视口高度（扣除吸顶导航）+ 全视口宽度。
+   出血公式：width 保持 auto，左右对称负 margin（calc(50% - 50vw)）
+   把盒子拉伸到视口两缘 —— 此前「width:100vw + 单侧负 margin」
+   会让右侧少一个出血量、被 overflow 裁掉（已修复的全宽 bug）。
+   亮色 = 晨光营地网格，暗色 = 深空坐标网格。
    ============================================================ */
 .hero-screen {
   position: relative;
-  width: 100vw;
-  margin-left: calc(50% - 50vw);
+  margin-inline: calc(50% - 50vw);
   margin-top: -32px;
   min-height: calc(100vh - 60px);
   display: flex;
@@ -487,12 +553,91 @@ onBeforeUnmount(() => {
     linear-gradient(var(--hero-grid-line) 1px, transparent 1px),
     linear-gradient(90deg, var(--hero-grid-line) 1px, transparent 1px);
   background-size: 52px 52px;
-  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 30%, transparent 78%);
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 30%, transparent 78%);
+  -webkit-mask-image: radial-gradient(ellipse 62% 58% at 50% 45%, #000 25%, transparent 76%);
+  mask-image: radial-gradient(ellipse 62% 58% at 50% 45%, #000 25%, transparent 76%);
   --hero-grid-line: rgba(47, 125, 90, 0.1);
 }
 html.dark .hero-grid {
   --hero-grid-line: rgba(124, 108, 240, 0.09);
+}
+
+/* 浮游光点：暗色 = 深空星尘（冷白 + 星云紫辉光），亮色 = 林间萤火（绿光点）。
+ * 双动画叠加：整体缓慢漂移（--dur 错峰）+ 透明度闪烁（半周期）。 */
+.hero-mote {
+  position: absolute;
+  border-radius: 50%;
+  background: var(--mote-color);
+  box-shadow: 0 0 8px 1px var(--mote-glow);
+  animation:
+    mote-float var(--dur) ease-in-out var(--delay) infinite alternate,
+    mote-twinkle calc(var(--dur) / 2) ease-in-out var(--delay) infinite;
+  --mote-color: rgba(47, 125, 90, 0.5);
+  --mote-glow: rgba(47, 125, 90, 0.35);
+}
+html.dark .hero-mote {
+  --mote-color: rgba(226, 233, 255, 0.85);
+  --mote-glow: rgba(148, 136, 245, 0.5);
+}
+@keyframes mote-float {
+  from {
+    transform: translate(0, 0);
+  }
+  to {
+    transform: translate(14px, -34px);
+  }
+}
+@keyframes mote-twinkle {
+  0%,
+  100% {
+    opacity: 0.9;
+  }
+  50% {
+    opacity: 0.2;
+  }
+}
+
+/* 流星：细长渐变线沿 -32° 方向周期性划过（rotate 后 translateX 即
+ * 沿局部 X 轴移动，自然形成左下方向的轨迹），头亮尾淡。 */
+.meteor {
+  position: absolute;
+  width: 150px;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(270deg, transparent, var(--meteor-color));
+  transform: rotate(-32deg);
+  opacity: 0;
+  pointer-events: none;
+  --meteor-color: rgba(47, 125, 90, 0.85);
+}
+html.dark .meteor {
+  --meteor-color: rgba(235, 240, 255, 0.9);
+}
+.meteor-a {
+  top: 15%;
+  left: 68%;
+  animation: meteor-fly 9s linear 3.2s infinite;
+}
+.meteor-b {
+  top: 7%;
+  left: 38%;
+  animation: meteor-fly 13s linear 7.6s infinite;
+}
+@keyframes meteor-fly {
+  0% {
+    opacity: 0;
+    transform: rotate(-32deg) translateX(0);
+  }
+  3% {
+    opacity: 1;
+  }
+  11% {
+    opacity: 0;
+    transform: rotate(-32deg) translateX(-560px);
+  }
+  100% {
+    opacity: 0;
+    transform: rotate(-32deg) translateX(-560px);
+  }
 }
 
 .hero-title {
@@ -501,11 +646,31 @@ html.dark .hero-grid {
   font-size: 56px;
   font-weight: 800;
   letter-spacing: 10px;
+}
+
+/* 逐字入场：每字独立渐变裁剪（background-position 按序取渐变切片，
+ * 四字拼出与整体渐变一致的连续过渡），模糊 + 上浮 + 缩放依次浮现。 */
+.hero-char {
+  display: inline-block;
   background: linear-gradient(120deg, var(--color-primary), var(--color-accent));
+  background-size: 400% 100%;
+  background-repeat: no-repeat;
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
-  animation: hero-in 0.9s ease backwards;
+  animation: char-in 0.7s cubic-bezier(0.2, 0.7, 0.3, 1) backwards;
+}
+@keyframes char-in {
+  from {
+    opacity: 0;
+    transform: translateY(26px) scale(0.86);
+    filter: blur(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
 }
 
 /* 打字机行：光标竖线呼吸闪烁 */
@@ -565,11 +730,12 @@ html.dark .hero-grid {
   box-shadow: var(--shadow-hover);
 }
 
-/* 地平线光带：主色 -> 点缀色的渐变光线 + 呼吸辉光（参考科幻首屏） */
+/* 地平线光带：入场从中心向两侧展开，随后常驻呼吸辉光；
+ * 一枚扫光脉冲沿线往返滑过（transform: translateX，不触发回流）。 */
 .horizon {
   position: absolute;
-  left: 6%;
-  right: 6%;
+  left: 3%;
+  right: 3%;
   bottom: 24%;
   height: 2px;
   border-radius: 2px;
@@ -581,11 +747,21 @@ html.dark .hero-grid {
     transparent
   );
   box-shadow: 0 0 26px 3px var(--hero-horizon-glow);
-  animation: horizon-breathe 4s ease-in-out infinite;
+  animation:
+    horizon-grow 1.1s 0.55s cubic-bezier(0.2, 0.7, 0.3, 1) backwards,
+    horizon-breathe 4s 1.9s ease-in-out infinite;
   --hero-horizon-glow: rgba(47, 125, 90, 0.4);
 }
 html.dark .horizon {
   --hero-horizon-glow: rgba(124, 108, 240, 0.45);
+}
+@keyframes horizon-grow {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
 }
 @keyframes horizon-breathe {
   0%,
@@ -596,6 +772,39 @@ html.dark .horizon {
   50% {
     opacity: 1;
     box-shadow: 0 0 34px 6px var(--hero-horizon-glow);
+  }
+}
+.horizon-pulse {
+  position: absolute;
+  top: -2px;
+  left: 0;
+  width: 90px;
+  height: 6px;
+  border-radius: 6px;
+  background: linear-gradient(90deg, transparent, var(--pulse-color), transparent);
+  filter: blur(1px);
+  opacity: 0;
+  animation: pulse-sweep 5.5s 2.4s ease-in-out infinite;
+  --pulse-color: rgba(47, 125, 90, 0.9);
+}
+html.dark .horizon-pulse {
+  --pulse-color: rgba(205, 196, 255, 0.95);
+}
+@keyframes pulse-sweep {
+  0% {
+    left: 0;
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  55% {
+    opacity: 0.9;
+  }
+  70%,
+  100% {
+    left: calc(100% - 90px);
+    opacity: 0;
   }
 }
 
@@ -641,6 +850,29 @@ html.dark .horizon {
   }
   50% {
     transform: translate(-50%, 8px);
+  }
+}
+
+/* 波纹环：以滚动按钮为圆心周期性扩散，强化「向下」的引导感 */
+.scroll-cue::after {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  border-radius: 50%;
+  border: 1px solid var(--color-primary);
+  opacity: 0;
+  animation: cue-ring 2.4s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes cue-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  70%,
+  100% {
+    transform: scale(1.8);
+    opacity: 0;
   }
 }
 
@@ -1001,11 +1233,34 @@ html.dark .horizon {
   .hero-typed {
     font-size: 14.5px;
   }
+  /* 小屏光点收敛数量感（隐藏后半，保留氛围即可） */
+  .hero-mote:nth-of-type(n + 7) {
+    display: none;
+  }
   .pin-lead {
     grid-template-columns: 1fr;
   }
   .pin-title {
     font-size: 18px;
+  }
+}
+
+/* 尊重「减少动态」系统偏好：停掉全部首屏装饰动画（无障碍）。
+ * 打字机的静态回退由脚本侧判断处理（见 onMounted）。 */
+@media (prefers-reduced-motion: reduce) {
+  .hero-char,
+  .hero-mote,
+  .meteor,
+  .horizon,
+  .horizon-pulse,
+  .scroll-cue,
+  .scroll-cue::after,
+  .hero-typed,
+  .hero-search,
+  .pinned-section,
+  .stream-section,
+  .article-card {
+    animation: none;
   }
 }
 </style>
