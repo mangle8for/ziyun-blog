@@ -129,7 +129,8 @@ async function onLogout() {
     </header>
 
     <!-- 内容区：路由出口 -->
-    <main class="content">
+    <!-- 全出血路由（meta.fullBleed，如首页首屏）脱离限宽容器，由页面自管宽度 -->
+    <main class="content" :class="{ 'content-full': route.meta.fullBleed === true }">
       <router-view />
     </main>
 
@@ -253,6 +254,14 @@ async function onLogout() {
   max-width: 1200px;
   margin: 0 auto;
   padding: 32px 24px 48px;
+}
+
+/* 全出血模式：解除限宽与内边距，交给页面自行约束内部区块宽度。
+ * 用于带全视口首屏的页面 —— 首屏天然铺满视口，不存在负 margin
+ * 出血被祖先 overflow 裁剪的问题。 */
+.content-full {
+  max-width: none;
+  padding: 0 0 48px;
 }
 
 .footer {

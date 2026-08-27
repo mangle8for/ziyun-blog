@@ -95,6 +95,24 @@ const heroMotes = computed(() => {
   })
 })
 
+/**
+ * 流星：4 颗按固定种子随机的位置/周期/相位/长度。多颗互质的
+ * 节奏叠加后，「何时出现」的间隔不重复 —— 比固定 delay 更像自然星空。
+ */
+const heroMeteors = computed(() => {
+  const rnd = mulberry32(0x5eed)
+  return Array.from({ length: 4 }, (_, i) => ({
+    id: i,
+    style: {
+      top: `${4 + rnd() * 30}%`,
+      left: `${36 + rnd() * 52}%`,
+      '--dur': `${(6.5 + rnd() * 8).toFixed(1)}s`,
+      '--delay': `${(rnd() * 11).toFixed(1)}s`,
+      '--len': `${110 + Math.round(rnd() * 90)}px`,
+    },
+  }))
+})
+
 // ==================== 数据 ====================
 const articles = ref<ArticleListItem[]>([])
 const total = ref(0)
@@ -297,9 +315,14 @@ onBeforeUnmount(() => {
         aria-hidden="true"
       ></span>
 
-      <!-- 流星：错峰周期性划过 -->
-      <span class="meteor meteor-a" aria-hidden="true"></span>
-      <span class="meteor meteor-b" aria-hidden="true"></span>
+      <!-- 流星：种子随机的数量/轨迹/节奏，出现频率不固定 -->
+      <span
+        v-for="m in heroMeteors"
+        :key="m.id"
+        class="meteor"
+        :style="m.style"
+        aria-hidden="true"
+      ></span>
 
       <h1 class="hero-title">
         <span
@@ -524,16 +547,12 @@ onBeforeUnmount(() => {
 }
 
 /* ============================================================
-   首屏英雄区：全视口高度（扣除吸顶导航）+ 全视口宽度。
-   出血公式：width 保持 auto，左右对称负 margin（calc(50% - 50vw)）
-   把盒子拉伸到视口两缘 —— 此前「width:100vw + 单侧负 margin」
-   会让右侧少一个出血量、被 overflow 裁掉（已修复的全宽 bug）。
-   亮色 = 晨光营地网格，暗色 = 深空坐标网格。
+   首屏英雄区：首页路由启用 fullBleed（PublicLayout.content-full）
+   解除限宽，此处天然铺满全视口 —— 不再依赖负 margin 出血，
+   从结构上杜绝「出血被祖先 overflow 裁剪」的回归。
    ============================================================ */
 .hero-screen {
   position: relative;
-  margin-inline: calc(50% - 50vw);
-  margin-top: -32px;
   min-height: calc(100vh - 60px);
   display: flex;
   flex-direction: column;
@@ -597,30 +616,23 @@ html.dark .hero-mote {
 }
 
 /* 流星：细长渐变线沿 -32° 方向周期性划过（rotate 后 translateX 即
- * 沿局部 X 轴移动，自然形成左下方向的轨迹），头亮尾淡。 */
+ * 沿局部 X 轴移动，自然形成左下方向的轨迹），头亮尾淡。
+ * 数量/位置/周期/相位由脚本按固定种子随机生成 —— 多颗不同节奏
+ * 叠加出「出现频率不固定」的自然观感。 */
 .meteor {
   position: absolute;
-  width: 150px;
+  width: var(--len, 150px);
   height: 2px;
   border-radius: 2px;
   background: linear-gradient(270deg, transparent, var(--meteor-color));
   transform: rotate(-32deg);
   opacity: 0;
   pointer-events: none;
+  animation: meteor-fly var(--dur, 9s) linear var(--delay, 3s) infinite;
   --meteor-color: rgba(47, 125, 90, 0.85);
 }
 html.dark .meteor {
   --meteor-color: rgba(235, 240, 255, 0.9);
-}
-.meteor-a {
-  top: 15%;
-  left: 68%;
-  animation: meteor-fly 9s linear 3.2s infinite;
-}
-.meteor-b {
-  top: 7%;
-  left: 38%;
-  animation: meteor-fly 13s linear 7.6s infinite;
 }
 @keyframes meteor-fly {
   0% {
@@ -913,7 +925,17 @@ html.dark .horizon-pulse {
   color: var(--color-primary);
 }
 
+/* fullBleed 布局下内容区块自行恢复限宽（等效原 .content 约束），
+ * 首屏以外的阅读宽度与全站一致 */
+.pinned-section,
+.stream-section {
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 24px;
+}
+
 .pinned-section {
+  padding-top: 8px;
   margin-bottom: 36px;
   animation: hero-in 0.7s ease backwards;
 }
@@ -997,6 +1019,7 @@ html.dark .horizon-pulse {
 }
 
 .stream-section {
+  padding-top: 8px;
   animation: hero-in 0.7s 0.1s ease backwards;
 }
 
@@ -1223,7 +1246,6 @@ html.dark .horizon-pulse {
 
 @media (max-width: 768px) {
   .hero-screen {
-    margin-top: -20px;
     min-height: calc(100vh - 60px);
   }
   .hero-title {
@@ -1236,6 +1258,10 @@ html.dark .horizon-pulse {
   /* 小屏光点收敛数量感（隐藏后半，保留氛围即可） */
   .hero-mote:nth-of-type(n + 7) {
     display: none;
+  }
+  .pinned-section,
+  .stream-section {
+    padding-inline: 16px;
   }
   .pin-lead {
     grid-template-columns: 1fr;

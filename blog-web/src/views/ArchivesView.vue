@@ -28,7 +28,9 @@ useHead({
   meta: () => [{ name: 'description', content: '按时间点排列的全部文章 —— 紫云博客航行日志。' }],
 })
 
-/** 按年份分组（保持时间倒序的既有顺序，仅按年聚拢渲染） */
+/** 按年份分组（保持时间倒序的既有顺序，仅按年聚拢渲染）。
+ * delay 为入场动画错峰延迟：以「装载批次」为单位轮转，
+ * 首屏与每次翻页追加的卡片都按序浮现。 */
 const groups = computed(() => {
   const map = new Map<string, ArticleListItem[]>()
   for (const a of articles.value) {
@@ -36,7 +38,11 @@ const groups = computed(() => {
     if (!map.has(year)) map.set(year, [])
     map.get(year)!.push(a)
   }
-  return [...map.entries()].map(([year, items]) => ({ year, items }))
+  let globalIdx = 0
+  return [...map.entries()].map(([year, items]) => ({
+    year,
+    items: items.map((a) => ({ a, delay: `${(globalIdx++ % PAGE_SIZE) * 70}ms` })),
+  }))
 })
 
 /** 首屏立即拉第一页；之后由 IntersectionObserver 触发翻页 */
@@ -118,27 +124,27 @@ onBeforeUnmount(() => {
           <span class="tl-year-count">{{ g.items.length }} 篇</span>
         </div>
 
-        <article v-for="(a, i) in g.items" :key="a.id" class="tl-item">
+        <article v-for="it in g.items" :key="it.a.id" class="tl-item">
           <i class="tl-dot item" aria-hidden="true"></i>
           <GlassCard
             class="tl-card"
             padded="md"
-            :style="{ animationDelay: `${(i % PAGE_SIZE) * 60}ms` }"
-            @click="goDetail(a.id)"
+            :style="{ animationDelay: it.delay }"
+            @click="goDetail(it.a.id)"
           >
             <div class="tl-inner">
               <!-- 封面：懒加载（低清预览 + 原图淡入），无封面时退化为标题卡 -->
-              <div class="tl-cover" v-if="a.cover">
-                <ProgressiveImage :src="a.cover" :alt="a.title" />
+              <div class="tl-cover" v-if="it.a.cover">
+                <ProgressiveImage :src="it.a.cover" :alt="it.a.title" />
               </div>
               <div class="tl-body">
-                <span class="tl-date">{{ formatDate(a.createTime) }}</span>
-                <h3 class="tl-title">{{ a.title }}</h3>
-                <p class="tl-summary" v-if="a.summary">{{ a.summary }}</p>
+                <span class="tl-date">{{ formatDate(it.a.createTime) }}</span>
+                <h3 class="tl-title">{{ it.a.title }}</h3>
+                <p class="tl-summary" v-if="it.a.summary">{{ it.a.summary }}</p>
                 <div class="tl-meta">
-                  <span v-if="a.categoryName" class="tl-chip">{{ a.categoryName }}</span>
-                  <span v-for="t in a.tags" :key="t.id" class="tl-chip tag"># {{ t.name }}</span>
-                  <span class="tl-views">{{ a.viewCount }} 阅读</span>
+                  <span v-if="it.a.categoryName" class="tl-chip">{{ it.a.categoryName }}</span>
+                  <span v-for="t in it.a.tags" :key="t.id" class="tl-chip tag"># {{ t.name }}</span>
+                  <span class="tl-views">{{ it.a.viewCount }} 阅读</span>
                 </div>
               </div>
             </div>
@@ -221,6 +227,18 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 12px;
   margin: 26px 0 16px;
+  /* 年份节点入场：滑入浮现（与卡片同语言） */
+  animation: year-in 0.5s ease backwards;
+}
+@keyframes year-in {
+  from {
+    opacity: 0;
+    transform: translateX(-14px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 .tl-year-text {
   margin: 0;
@@ -269,16 +287,19 @@ onBeforeUnmount(() => {
 /* 卡片：封面左 + 内容右（宽屏），内容高度决定卡高（不固定大小的卡片） */
 .tl-card {
   cursor: pointer;
-  animation: tl-in 0.5s ease backwards;
+  /* 入场：模糊 + 上浮，柔化翻页追加时的突兀感 */
+  animation: tl-in 0.55s ease backwards;
 }
 @keyframes tl-in {
   from {
     opacity: 0;
-    transform: translateY(14px);
+    transform: translateY(18px);
+    filter: blur(6px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
+    filter: blur(0);
   }
 }
 .tl-inner {
@@ -393,6 +414,14 @@ onBeforeUnmount(() => {
   }
   .tl-views {
     margin-left: 0;
+  }
+}
+
+/* 尊重「减少动态」系统偏好：停掉入场动画（无障碍） */
+@media (prefers-reduced-motion: reduce) {
+  .tl-card,
+  .tl-year {
+    animation: none;
   }
 }
 </style>

@@ -16,7 +16,13 @@ const router = createRouter({
       path: '/',
       component: () => import('@/layouts/PublicLayout.vue'),
       children: [
-        { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
+        // 首页带全视口首屏：fullBleed 让布局解除限宽（见 PublicLayout.content-full）
+        {
+          path: '',
+          name: 'home',
+          component: () => import('@/views/HomeView.vue'),
+          meta: { fullBleed: true },
+        },
         {
           path: 'article/:id',
           name: 'article-detail',

@@ -676,10 +676,13 @@ html.dark .star-sea {
   padding: 40px 0;
 }
 
-/* 移动端：星海拉高容纳近方形网格，标签防溢出 */
+/* 移动端：星海框收窄宽度占比（两侧留出拇指滑动空间，方便下滑页面），
+ * 高度适当收敛；标签防溢出 */
 @media (max-width: 768px) {
   .star-sea {
-    height: 430px;
+    width: 84%;
+    margin-inline: auto;
+    height: 380px;
   }
   .sea-tag {
     max-width: 150px;
