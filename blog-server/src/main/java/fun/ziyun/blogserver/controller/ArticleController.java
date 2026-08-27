@@ -4,6 +4,7 @@ import fun.ziyun.blogserver.common.PageResult;
 import fun.ziyun.blogserver.common.Result;
 import fun.ziyun.blogserver.dto.ArticleDTO;
 import fun.ziyun.blogserver.dto.PageQuery;
+import fun.ziyun.blogserver.dto.PinnedUpdateDTO;
 import fun.ziyun.blogserver.dto.StatusUpdateDTO;
 import fun.ziyun.blogserver.service.ArticleService;
 import fun.ziyun.blogserver.service.AsyncViewCountService;
@@ -13,6 +14,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Min;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.util.StringUtils;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -24,6 +26,9 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.time.LocalDate;
+import java.util.List;
 
 /**
  * 文章接口（RESTful）。
@@ -60,15 +65,32 @@ public class ArticleController {
      * 参数校验说明：PageQuery 上的 @Min/@Max 对 GET query 生效，
      * 依赖类级 @Validated（@RequestBody 场景用方法参数上的 @Valid，
      * 两种触发点不一样，这里都配齐，见 PageQuery 类注释）。
+     *
+     * <p>时间过滤：beginDate/endDate 为 ISO yyyy-MM-dd，闭区间含端点日全天，
+     * 供搜索页「按时间搜索」；非 ISO 格式由绑定器直接 400。</p>
      */
     @GetMapping
     public Result<PageResult<ArticleListItemVO>> list(
             @Valid PageQuery query,
             @RequestParam(required = false) Long categoryId,
             @RequestParam(required = false) Long tagId,
-            @RequestParam(required = false) String keyword) {
+            @RequestParam(required = false) String keyword,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate beginDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false, defaultValue = "false") boolean excludePinned) {
         return Result.ok(articleService.pagePublished(
-                query.getPage(), query.getSize(), categoryId, tagId, keyword));
+                query.getPage(), query.getSize(), categoryId, tagId, keyword,
+                beginDate, endDate, excludePinned));
+    }
+
+    /**
+     * 置顶文章清单（公开，首页「星耀推荐」区消费）。
+     * 字面量路径 /pinned 声明在 /{id} 之前仅为可读性 ——
+     * Spring MVC 精确路径天然优先于路径变量模板，与声明顺序无关。
+     */
+    @GetMapping("/pinned")
+    public Result<List<ArticleListItemVO>> pinned(@RequestParam(defaultValue = "5") @Min(1) int limit) {
+        return Result.ok(articleService.listPinned(limit));
     }
 
     /** 管理端列表（草稿/发布可过滤，status 为空查全部） */
@@ -134,6 +156,14 @@ public class ArticleController {
     public Result<Void> changeStatus(@PathVariable @Min(1) Long id,
                                      @RequestBody @Valid StatusUpdateDTO dto) {
         articleService.changeStatus(id, dto.getStatus());
+        return Result.ok();
+    }
+
+    /** 置顶切换：管理端列表「置顶」按钮直连本接口（幂等，同状态短路） */
+    @PutMapping("/{id}/pinned")
+    public Result<Void> changePinned(@PathVariable @Min(1) Long id,
+                                     @RequestBody @Valid PinnedUpdateDTO dto) {
+        articleService.changePinned(id, dto.getPinned());
         return Result.ok();
     }
 

@@ -47,9 +47,10 @@ public class SitemapController {
         xml.append("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
         xml.append("<urlset xmlns=\"http://www.sitemaps.org/schemas/sitemap/0.9\">\n");
 
-        // 静态页面：首页权重最高，分类/标签次之，关于页最低
+        // 静态页面：首页权重最高，归档/分类/标签次之，关于页最低
         // changefreq 仅为提示（协议：hint 非命令）：文章站首页/归档页随内容更新
         appendUrl(xml, siteUrl + "/", "1.0", null, "daily");
+        appendUrl(xml, siteUrl + "/archives", "0.8", null, "daily");
         appendUrl(xml, siteUrl + "/categories", "0.8", null, "weekly");
         appendUrl(xml, siteUrl + "/tags", "0.8", null, "weekly");
         appendUrl(xml, siteUrl + "/about", "0.6", null, "monthly");

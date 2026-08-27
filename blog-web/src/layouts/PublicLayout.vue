@@ -15,8 +15,10 @@ const { theme, toggleTheme } = useTheme()
 /** 导航项（当前路由高亮） */
 const navItems = [
   { path: '/', label: '首页' },
+  { path: '/archives', label: '文章' },
   { path: '/categories', label: '分类' },
   { path: '/tags', label: '标签' },
+  { path: '/search', label: '搜索' },
   { path: '/about', label: '关于' },
 ]
 
@@ -64,7 +66,10 @@ async function onLogout() {
 
         <div class="nav-actions">
           <!-- 主题切换：暗色星际拓荒 / 亮色自然绿意 -->
-          <el-tooltip :content="theme === 'dark' ? '切换到自然绿意' : '切换到星际拓荒'" placement="bottom">
+          <el-tooltip
+            :content="theme === 'dark' ? '切换到自然绿意' : '切换到星际拓荒'"
+            placement="bottom"
+          >
             <el-button class="icon-btn" circle @click="toggleTheme">
               <el-icon><Moon v-if="theme === 'dark'" /><Sunny v-else /></el-icon>
             </el-button>
@@ -80,13 +85,22 @@ async function onLogout() {
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item @click="go('/profile')">个人中心</el-dropdown-item>
-                  <el-dropdown-item v-if="userStore.isAdmin" @click="go('/admin')">管理后台</el-dropdown-item>
+                  <el-dropdown-item v-if="userStore.isAdmin" @click="go('/admin')"
+                    >管理后台</el-dropdown-item
+                  >
                   <el-dropdown-item divided @click="onLogout">退出登录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </template>
-          <el-button v-else class="login-btn" type="primary" round size="small" @click="go('/login')">
+          <el-button
+            v-else
+            class="login-btn"
+            type="primary"
+            round
+            size="small"
+            @click="go('/login')"
+          >
             登录
           </el-button>
 

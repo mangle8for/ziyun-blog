@@ -1,9 +1,9 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowDown, ArrowRight, ArrowUp } from '@element-plus/icons-vue'
+import { ArrowDown, ArrowRight, ArrowUp, Search } from '@element-plus/icons-vue'
 
-import { getArticlePage } from '@/api/article'
+import { getArticlePage, getPinnedArticles } from '@/api/article'
 import { getCategoryList, getHotCategories } from '@/api/category'
 import { getHotTags, getTagList } from '@/api/tag'
 import GlassCard from '@/components/GlassCard.vue'
@@ -13,6 +13,49 @@ import type { ArticleListItem, TagItem } from '@/types'
 
 const router = useRouter()
 
+// ==================== 首屏打字机 ====================
+// 循环打出/擦除标语：打字 110ms/字 -> 停顿 -> 擦除 45ms/字 -> 下一句。
+// prefers-reduced-motion 用户直接显示静态标语，不跑定时器。
+const HERO_PHRASES = [
+  '欢迎来到紫云博客',
+  '星海拾遗 · 记录技术、思考与自然',
+  '把每一次思考，写成夜空里的星光',
+]
+const typedText = ref('')
+let typeTimer: number | undefined
+let phraseIdx = 0
+let charIdx = 0
+let deleting = false
+
+function typeTick() {
+  const current = HERO_PHRASES[phraseIdx] ?? ''
+  if (!deleting) {
+    charIdx++
+    typedText.value = current.slice(0, charIdx)
+    if (charIdx === current.length) {
+      deleting = true
+      typeTimer = window.setTimeout(typeTick, 2400)
+      return
+    }
+    typeTimer = window.setTimeout(typeTick, 110)
+  } else {
+    charIdx--
+    typedText.value = current.slice(0, charIdx)
+    if (charIdx === 0) {
+      deleting = false
+      phraseIdx = (phraseIdx + 1) % HERO_PHRASES.length
+      typeTimer = window.setTimeout(typeTick, 600)
+      return
+    }
+    typeTimer = window.setTimeout(typeTick, 45)
+  }
+}
+
+function scrollToStream() {
+  streamEl.value?.scrollIntoView({ behavior: 'smooth' })
+}
+
+// ==================== 数据 ====================
 const articles = ref<ArticleListItem[]>([])
 const total = ref(0)
 const page = ref(1)
@@ -20,6 +63,11 @@ const size = ref(6)
 const loading = ref(false)
 /** 加载失败标记：与真实空态区分，失败时展示重试入口 */
 const loadError = ref(false)
+
+/** 置顶文章（星耀推荐区，可复数；首页文章流已排除它们避免重复） */
+const pinned = ref<ArticleListItem[]>([])
+/** 首篇置顶（模板类型收窄用；pinned 非空时必有值） */
+const leadPinned = computed(() => pinned.value[0])
 
 /** 热门筛选（默认展示，按已发布文章数倒序 TopN） */
 const hotCategories = ref<FilterChip[]>([])
@@ -30,10 +78,9 @@ const allTags = ref<FilterChip[]>([])
 const categoriesExpanded = ref(false)
 const tagsExpanded = ref(false)
 
-/** 当前筛选条件（分类/标签/关键词） */
+/** 当前筛选条件（分类/标签） */
 const activeCategoryId = ref<string>('')
 const activeTagId = ref<string>('')
-const keyword = ref('')
 
 /** 卡片内标签最多展示数，超出折叠为 +N（防止多标签撑高卡片） */
 const MAX_CARD_TAGS = 3
@@ -41,6 +88,8 @@ const MAX_CARD_TAGS = 3
 /** 视口宽度是否处于移动端档（分页器紧凑模式用） */
 const isMobile = ref(false)
 const mobileMq = window.matchMedia('(max-width: 768px)')
+
+const streamEl = ref<HTMLElement | null>(null)
 
 function onMqChange(e: MediaQueryListEvent) {
   isMobile.value = e.matches
@@ -92,7 +141,8 @@ async function loadArticles() {
       size: size.value,
       categoryId: activeCategoryId.value || undefined,
       tagId: activeTagId.value || undefined,
-      keyword: keyword.value || undefined,
+      // 置顶文章由星耀区展示，文章流排除它们（后端 excludePinned）
+      excludePinned: true,
     })
     articles.value = data.records
     // total 是 string（Long 序列化），分页组件需要 number
@@ -104,6 +154,15 @@ async function loadArticles() {
     loadError.value = true
   } finally {
     loading.value = false
+  }
+}
+
+/** 置顶清单拉取：失败静默（星耀区直接隐藏，不影响主流程） */
+async function loadPinned() {
+  try {
+    pinned.value = await getPinnedArticles(5)
+  } catch {
+    pinned.value = []
   }
 }
 
@@ -140,19 +199,18 @@ function onFilterTag(id: string) {
   loadArticles()
 }
 
-function onSearch() {
-  page.value = 1
-  loadArticles()
-}
-
 function onPageChange(p: number) {
   page.value = p
   loadArticles()
-  window.scrollTo({ top: 0, behavior: 'smooth' })
+  window.scrollTo({ top: window.innerHeight, behavior: 'smooth' })
 }
 
 function goDetail(id: string) {
   router.push(`/article/${id}`)
+}
+
+function goSearch() {
+  router.push('/search')
 }
 
 function formatDate(iso: string) {
@@ -168,201 +226,551 @@ onMounted(() => {
   isMobile.value = mobileMq.matches
   mobileMq.addEventListener('change', onMqChange)
   loadArticles()
+  loadPinned()
   loadFilters()
+  // 尊重「减少动态」：不跑打字机，直接显示静态标语
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    typedText.value = HERO_PHRASES[1] ?? ''
+  } else {
+    typeTick()
+  }
 })
 
 onBeforeUnmount(() => {
   mobileMq.removeEventListener('change', onMqChange)
+  if (typeTimer) window.clearTimeout(typeTimer)
 })
 </script>
 
 <template>
   <div class="home-view">
-    <!-- 英雄区：站点标题 + 搜索 -->
-    <section class="hero">
+    <!-- ============ 首屏：全视口英雄区（打字机 + 地平线光带） ============ -->
+    <section class="hero-screen">
+      <div class="hero-grid" aria-hidden="true"></div>
+
       <h1 class="hero-title">紫云博客</h1>
-      <p class="hero-subtitle">星海拾遗 · 记录技术、思考与自然</p>
-      <div class="hero-search">
-        <el-input
-          v-model="keyword"
-          placeholder="搜索文章标题..."
-          clearable
-          size="large"
-          class="search-input"
-          @keyup.enter="onSearch"
-          @clear="onSearch"
-        >
-          <template #append>
-            <el-button @click="onSearch">搜索</el-button>
-          </template>
-        </el-input>
-      </div>
+      <p class="hero-typed" aria-live="polite">
+        {{ typedText }}<span class="caret" aria-hidden="true"></span>
+      </p>
+
+      <button type="button" class="hero-search" @click="goSearch">
+        <el-icon><Search /></el-icon>
+        <span>搜索文章 / 分类 / 标签…</span>
+      </button>
+
+      <div class="horizon" aria-hidden="true"></div>
+
+      <button
+        type="button"
+        class="scroll-cue"
+        aria-label="向下滚动查看文章"
+        @click="scrollToStream"
+      >
+        <el-icon :size="20"><ArrowDown /></el-icon>
+      </button>
     </section>
 
-    <!-- 筛选区：分类 + 标签（默认热门 TopN，可展开全部） -->
-    <section class="filters" v-if="displayCategories.length || displayTags.length">
-      <div class="filter-row" v-if="displayCategories.length">
-        <span class="filter-label">分类</span>
-        <div class="filter-chips">
-          <span
-            v-for="cat in displayCategories"
-            :key="cat.id"
-            class="chip"
-            :class="{ active: activeCategoryId === cat.id }"
-            :title="cat.name"
-            @click="onFilterCategory(cat.id)"
-          >
-            {{ cat.name }}
-          </span>
-          <button class="chip chip-toggle" type="button" @click="toggleCategories">
-            {{ categoriesExpanded ? '收起' : '全部' }}
-            <el-icon :size="12">
-              <ArrowUp v-if="categoriesExpanded" />
-              <ArrowDown v-else />
-            </el-icon>
-          </button>
-        </div>
-      </div>
-      <div class="filter-row" v-if="displayTags.length">
-        <span class="filter-label">标签</span>
-        <div class="filter-chips">
-          <span
-            v-for="tag in displayTags"
-            :key="tag.id"
-            class="chip chip-tag"
-            :class="{ active: activeTagId === tag.id }"
-            :title="tag.name"
-            @click="onFilterTag(tag.id)"
-          >
-            # {{ tag.name }}
-          </span>
-          <button class="chip chip-toggle" type="button" @click="toggleTags">
-            {{ tagsExpanded ? '收起' : '全部' }}
-            <el-icon :size="12">
-              <ArrowUp v-if="tagsExpanded" />
-              <ArrowDown v-else />
-            </el-icon>
-          </button>
-        </div>
-      </div>
-    </section>
+    <!-- ============ 星耀推荐：置顶文章（可复数，图片优先展示） ============ -->
+    <section v-if="pinned.length" class="pinned-section">
+      <header class="sec-head">
+        <h2 class="sec-title">星耀推荐</h2>
+        <span class="sec-sub">✦ 站长置顶</span>
+      </header>
 
-    <!-- 文章卡片网格：首次加载显示骨架屏，翻页时保留旧列表 + 加载遮罩 -->
-    <section v-loading="loading && articles.length > 0" class="article-grid">
-      <template v-if="loading && articles.length === 0">
-        <SkeletonCard v-for="n in 6" :key="n" :index="n - 1" />
-      </template>
-
-      <template v-else>
-        <GlassCard
-          v-for="(article, index) in articles"
-          :key="article.id"
-          class="article-card"
-          :style="{ animationDelay: `${index * 60}ms` }"
-          padded="md"
-        >
-          <div class="card-body" @click="goDetail(article.id)">
-            <!-- 封面：低清预览 + 原图淡入（懒加载类型 C） -->
-            <div class="cover-wrap" v-if="article.cover">
-              <ProgressiveImage :src="article.cover" :alt="article.title" hover-zoom />
-            </div>
-            <div class="card-text">
-              <h2 class="card-title">{{ article.title }}</h2>
-              <p class="card-summary">{{ article.summary || '（暂无摘要）' }}</p>
-              <div class="card-meta">
-                <span class="meta-item">{{ formatDate(article.createTime) }}</span>
-                <span class="meta-item" v-if="article.categoryName">{{ article.categoryName }}</span>
-                <span class="meta-item">{{ article.viewCount }} 阅读</span>
-              </div>
-              <div class="card-tags" v-if="article.tags?.length">
-                <span v-for="tag in visibleTags(article.tags)" :key="tag.id" class="tag-mini">
-                  #{{ tag.name }}
-                </span>
-                <span v-if="article.tags.length > MAX_CARD_TAGS" class="tag-mini tag-more">
-                  +{{ article.tags.length - MAX_CARD_TAGS }}
-                </span>
-              </div>
-            </div>
-            <div class="card-arrow">
-              <el-icon><ArrowRight /></el-icon>
+      <div class="pinned-grid" v-if="leadPinned">
+        <!-- 首篇置顶：大幅横向卡（封面左 45%，为图片留足展示空间） -->
+        <GlassCard class="pin-card pin-lead" padded="md" @click="goDetail(leadPinned.id)">
+          <div class="pin-cover" v-if="leadPinned.cover">
+            <ProgressiveImage :src="leadPinned.cover" :alt="leadPinned.title" hover-zoom />
+            <span class="pin-badge">★ 置顶</span>
+          </div>
+          <div class="pin-body">
+            <h3 class="pin-title">{{ leadPinned.title }}</h3>
+            <p class="pin-summary">{{ leadPinned.summary || '（暂无摘要）' }}</p>
+            <div class="pin-meta">
+              <span v-if="leadPinned.categoryName" class="meta-item">{{
+                leadPinned.categoryName
+              }}</span>
+              <span class="meta-item">{{ formatDate(leadPinned.createTime) }}</span>
+              <span class="meta-item">{{ leadPinned.viewCount }} 阅读</span>
             </div>
           </div>
         </GlassCard>
-      </template>
 
-      <!-- 加载失败态：与真实空态区分，提供重试 -->
-      <div v-if="!loading && loadError" class="empty-state">
-        <p>星舰信号中断，文章加载失败</p>
-        <el-button round @click="loadArticles">重新连接</el-button>
-      </div>
-
-      <!-- 空态 -->
-      <div v-else-if="!loading && articles.length === 0" class="empty-state">
-        <p>这片星海暂时没有文章</p>
+        <!-- 其余置顶：自适应网格（1 张自动铺满，多张并排），封面在上 -->
+        <GlassCard
+          v-for="a in pinned.slice(1)"
+          :key="a.id"
+          class="pin-card pin-side"
+          padded="md"
+          @click="goDetail(a.id)"
+        >
+          <div class="pin-cover cover-top" v-if="a.cover">
+            <ProgressiveImage :src="a.cover" :alt="a.title" hover-zoom />
+            <span class="pin-badge">★ 置顶</span>
+          </div>
+          <div class="pin-body">
+            <h3 class="pin-title small">{{ a.title }}</h3>
+            <p class="pin-summary clamp2">{{ a.summary || '（暂无摘要）' }}</p>
+            <div class="pin-meta">
+              <span v-if="a.categoryName" class="meta-item">{{ a.categoryName }}</span>
+              <span class="meta-item">{{ formatDate(a.createTime) }}</span>
+            </div>
+          </div>
+        </GlassCard>
       </div>
     </section>
 
-    <!-- 分页 -->
-    <div class="pagination" v-if="total > size">
-      <el-pagination
-        background
-        :small="isMobile"
-        :layout="paginationLayout"
-        :total="total"
-        :page-size="size"
-        :current-page="page"
-        @current-change="onPageChange"
-      />
-    </div>
+    <!-- ============ 文章流 ============ -->
+    <section ref="streamEl" class="stream-section">
+      <header class="sec-head">
+        <h2 class="sec-title">最新文章</h2>
+        <a class="sec-more" href="/archives" @click.prevent="router.push('/archives')">
+          全部文章 <el-icon :size="13"><ArrowRight /></el-icon>
+        </a>
+      </header>
+
+      <!-- 筛选区：分类 + 标签（默认热门 TopN，可展开全部） -->
+      <section class="filters" v-if="displayCategories.length || displayTags.length">
+        <div class="filter-row" v-if="displayCategories.length">
+          <span class="filter-label">分类</span>
+          <div class="filter-chips">
+            <span
+              v-for="cat in displayCategories"
+              :key="cat.id"
+              class="chip"
+              :class="{ active: activeCategoryId === cat.id }"
+              :title="cat.name"
+              @click="onFilterCategory(cat.id)"
+            >
+              {{ cat.name }}
+            </span>
+            <button class="chip chip-toggle" type="button" @click="toggleCategories">
+              {{ categoriesExpanded ? '收起' : '全部' }}
+              <el-icon :size="12">
+                <ArrowUp v-if="categoriesExpanded" />
+                <ArrowDown v-else />
+              </el-icon>
+            </button>
+          </div>
+        </div>
+        <div class="filter-row" v-if="displayTags.length">
+          <span class="filter-label">标签</span>
+          <div class="filter-chips">
+            <span
+              v-for="tag in displayTags"
+              :key="tag.id"
+              class="chip chip-tag"
+              :class="{ active: activeTagId === tag.id }"
+              :title="tag.name"
+              @click="onFilterTag(tag.id)"
+            >
+              # {{ tag.name }}
+            </span>
+            <button class="chip chip-toggle" type="button" @click="toggleTags">
+              {{ tagsExpanded ? '收起' : '全部' }}
+              <el-icon :size="12">
+                <ArrowUp v-if="tagsExpanded" />
+                <ArrowDown v-else />
+              </el-icon>
+            </button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 文章卡片网格：首次加载显示骨架屏，翻页时保留旧列表 + 加载遮罩 -->
+      <section v-loading="loading && articles.length > 0" class="article-grid">
+        <template v-if="loading && articles.length === 0">
+          <SkeletonCard v-for="n in 6" :key="n" :index="n - 1" />
+        </template>
+
+        <template v-else>
+          <GlassCard
+            v-for="(article, index) in articles"
+            :key="article.id"
+            class="article-card"
+            :style="{ animationDelay: `${index * 60}ms` }"
+            padded="md"
+          >
+            <div class="card-body" @click="goDetail(article.id)">
+              <!-- 封面：低清预览 + 原图淡入（懒加载类型 C） -->
+              <div class="cover-wrap" v-if="article.cover">
+                <ProgressiveImage :src="article.cover" :alt="article.title" hover-zoom />
+              </div>
+              <div class="card-text">
+                <h2 class="card-title">{{ article.title }}</h2>
+                <p class="card-summary">{{ article.summary || '（暂无摘要）' }}</p>
+                <div class="card-meta">
+                  <span class="meta-item">{{ formatDate(article.createTime) }}</span>
+                  <span class="meta-item" v-if="article.categoryName">{{
+                    article.categoryName
+                  }}</span>
+                  <span class="meta-item">{{ article.viewCount }} 阅读</span>
+                </div>
+                <div class="card-tags" v-if="article.tags?.length">
+                  <span v-for="tag in visibleTags(article.tags)" :key="tag.id" class="tag-mini">
+                    #{{ tag.name }}
+                  </span>
+                  <span v-if="article.tags.length > MAX_CARD_TAGS" class="tag-mini tag-more">
+                    +{{ article.tags.length - MAX_CARD_TAGS }}
+                  </span>
+                </div>
+              </div>
+              <div class="card-arrow">
+                <el-icon><ArrowRight /></el-icon>
+              </div>
+            </div>
+          </GlassCard>
+        </template>
+
+        <!-- 加载失败态：与真实空态区分，提供重试 -->
+        <div v-if="!loading && loadError" class="empty-state">
+          <p>星舰信号中断，文章加载失败</p>
+          <el-button round @click="loadArticles">重新连接</el-button>
+        </div>
+
+        <!-- 空态：区分「被筛选空」与「全部文章都在星耀区」 -->
+        <div v-else-if="!loading && articles.length === 0" class="empty-state">
+          <p v-if="activeCategoryId || activeTagId">这片星域暂时没有匹配的文章</p>
+          <p v-else-if="pinned.length">文章都在上方星耀区闪耀 —— 去文章页看完整清单吧</p>
+          <p v-else>这片星海暂时没有文章</p>
+        </div>
+      </section>
+
+      <!-- 分页 -->
+      <div class="pagination" v-if="total > size">
+        <el-pagination
+          background
+          :small="isMobile"
+          :layout="paginationLayout"
+          :total="total"
+          :page-size="size"
+          :current-page="page"
+          @current-change="onPageChange"
+        />
+      </div>
+    </section>
   </div>
 </template>
 
 <style scoped>
-.hero {
+.home-view {
+  /* 首屏 100vw 出血：剪裁横向溢出（clip 不产生滚动容器，不影响吸顶导航） */
+  overflow-x: clip;
+}
+
+/* ============================================================
+   首屏英雄区：全视口高度（扣除吸顶导航），负 margin 抵消内容区
+   上下留白并横向出血到视口边缘。亮色 = 晨光营地网格，暗色 = 深空坐标网格。
+   ============================================================ */
+.hero-screen {
+  position: relative;
+  width: 100vw;
+  margin-left: calc(50% - 50vw);
+  margin-top: -32px;
+  min-height: calc(100vh - 60px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
   text-align: center;
-  padding: 48px 0 32px;
+  overflow: hidden;
+  padding: 24px;
+}
+
+/* 坐标网格：双色主题各自低透明度，径向蒙版向边缘淡出 */
+.hero-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--hero-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-grid-line) 1px, transparent 1px);
+  background-size: 52px 52px;
+  -webkit-mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 30%, transparent 78%);
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 45%, #000 30%, transparent 78%);
+  --hero-grid-line: rgba(47, 125, 90, 0.1);
+}
+html.dark .hero-grid {
+  --hero-grid-line: rgba(124, 108, 240, 0.09);
 }
 
 .hero-title {
-  font-size: 42px;
-  font-weight: 800;
-  letter-spacing: 6px;
+  position: relative;
   margin: 0;
-  /* 标题渐变色（科幻感） */
+  font-size: 56px;
+  font-weight: 800;
+  letter-spacing: 10px;
+  background: linear-gradient(120deg, var(--color-primary), var(--color-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: hero-in 0.9s ease backwards;
+}
+
+/* 打字机行：光标竖线呼吸闪烁 */
+.hero-typed {
+  position: relative;
+  margin: 0;
+  min-height: 1.6em;
+  color: var(--text-secondary);
+  font-size: 17px;
+  letter-spacing: 2px;
+  animation: hero-in 0.9s 0.15s ease backwards;
+}
+.caret {
+  display: inline-block;
+  width: 2px;
+  height: 1.05em;
+  margin-left: 3px;
+  vertical-align: -0.15em;
+  background: var(--color-primary);
+  animation: caret-blink 1s step-end infinite;
+}
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 搜索入口：幽灵输入框样式，点击跳独立搜索页 */
+.hero-search {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 11px 22px;
+  border-radius: 999px;
+  font-family: inherit;
+  font-size: 14px;
+  color: var(--text-muted);
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  backdrop-filter: blur(var(--glass-blur));
+  cursor: pointer;
+  transition:
+    color 0.25s ease,
+    border-color 0.25s ease,
+    box-shadow 0.25s ease;
+  animation: hero-in 0.9s 0.3s ease backwards;
+}
+.hero-search:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+  box-shadow: var(--shadow-hover);
+}
+
+/* 地平线光带：主色 -> 点缀色的渐变光线 + 呼吸辉光（参考科幻首屏） */
+.horizon {
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: 24%;
+  height: 2px;
+  border-radius: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--color-primary) 30%,
+    var(--color-accent) 70%,
+    transparent
+  );
+  box-shadow: 0 0 26px 3px var(--hero-horizon-glow);
+  animation: horizon-breathe 4s ease-in-out infinite;
+  --hero-horizon-glow: rgba(47, 125, 90, 0.4);
+}
+html.dark .horizon {
+  --hero-horizon-glow: rgba(124, 108, 240, 0.45);
+}
+@keyframes horizon-breathe {
+  0%,
+  100% {
+    opacity: 0.75;
+    box-shadow: 0 0 18px 2px var(--hero-horizon-glow);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 34px 6px var(--hero-horizon-glow);
+  }
+}
+
+@keyframes hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 下滑指示：底部居中，上下浮动引导滚动 */
+.scroll-cue {
+  position: absolute;
+  bottom: 26px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  cursor: pointer;
+  animation: cue-float 2.2s ease-in-out infinite;
+  transition:
+    color 0.25s ease,
+    border-color 0.25s ease;
+}
+.scroll-cue:hover {
+  color: var(--color-primary);
+  border-color: var(--color-primary);
+}
+@keyframes cue-float {
+  0%,
+  100% {
+    transform: translate(-50%, 0);
+  }
+  50% {
+    transform: translate(-50%, 8px);
+  }
+}
+
+/* ============================================================
+   区块标题（星耀推荐 / 最新文章共用）
+   ============================================================ */
+.sec-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin: 6px 0 18px;
+}
+.sec-title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: 3px;
   background: linear-gradient(120deg, var(--color-primary), var(--color-accent));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
 }
-
-.hero-subtitle {
-  margin: 12px 0 24px;
+.sec-sub {
+  color: var(--text-muted);
+  font-size: 13px;
+  letter-spacing: 1px;
+}
+.sec-more {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   color: var(--text-secondary);
-  font-size: 15px;
-  letter-spacing: 2px;
+  font-size: 13.5px;
+  transition: color 0.25s ease;
+}
+.sec-more:hover {
+  color: var(--color-primary);
 }
 
-.hero-search {
-  max-width: 520px;
-  margin: 0 auto;
+.pinned-section {
+  margin-bottom: 36px;
+  animation: hero-in 0.7s ease backwards;
 }
 
-/* 搜索框半透明融合背景 */
-.hero-search :deep(.el-input__wrapper) {
-  background: var(--bg-card);
-  backdrop-filter: blur(var(--glass-blur));
-  border-radius: 999px 0 0 999px;
-  box-shadow: none;
-  border: 1px solid var(--border-color);
-  padding-left: 20px;
-}
-.hero-search :deep(.el-input-group__append) {
-  border-radius: 0 999px 999px 0;
-  background: var(--color-primary);
-  border: 1px solid var(--color-primary);
-  color: #fff;
+/* 星耀网格：首篇横向大卡铺满整行，其余自适应并排 */
+.pinned-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
 }
 
+.pin-card {
+  cursor: pointer;
+}
+.pin-lead {
+  grid-column: 1 / -1;
+  /* 首篇大卡：封面左 + 内容右（宽屏），移动端自动换行为纵向 */
+  display: grid;
+  grid-template-columns: minmax(0, 11fr) minmax(0, 9fr);
+  gap: 20px;
+  align-items: center;
+}
+
+.pin-cover {
+  position: relative;
+  border-radius: 10px;
+  overflow: hidden;
+  aspect-ratio: 16 / 9;
+  background: var(--bg-page);
+}
+.pin-title {
+  margin: 0 0 10px;
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-main);
+  transition: color 0.25s ease;
+}
+.pin-card:hover .pin-title {
+  color: var(--color-primary);
+}
+.pin-title.small {
+  font-size: 17px;
+}
+.pin-summary {
+  margin: 0 0 12px;
+  color: var(--text-secondary);
+  font-size: 14px;
+  line-height: 1.7;
+}
+.pin-summary.clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.pin-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.meta-item {
+  white-space: nowrap;
+}
+
+/* 置顶徽章：封面左上角，毛玻璃底 + 点缀色 */
+.pin-badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 11.5px;
+  letter-spacing: 1px;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--bg-page) 78%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-accent) 45%, transparent);
+  backdrop-filter: blur(6px);
+  z-index: 1;
+}
+
+.stream-section {
+  animation: hero-in 0.7s 0.1s ease backwards;
+}
+
+/* ============================================================
+   筛选区（沿用原首页交互：热门 TopN + 展开全部）
+   ============================================================ */
 .filters {
   margin-bottom: 24px;
   display: flex;
@@ -582,9 +990,22 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
+  .hero-screen {
+    margin-top: -20px;
+    min-height: calc(100vh - 60px);
+  }
   .hero-title {
-    font-size: 30px;
-    letter-spacing: 3px;
+    font-size: 34px;
+    letter-spacing: 5px;
+  }
+  .hero-typed {
+    font-size: 14.5px;
+  }
+  .pin-lead {
+    grid-template-columns: 1fr;
+  }
+  .pin-title {
+    font-size: 18px;
   }
 }
 </style>

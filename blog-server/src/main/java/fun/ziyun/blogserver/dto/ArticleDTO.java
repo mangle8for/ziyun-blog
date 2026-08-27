@@ -46,6 +46,11 @@ public class ArticleDTO {
     /** 分类 ID：选填（可为空 = 未分类），由 Service 校验是否存在 */
     private Long categoryId;
 
+    /** 置顶：选填（0-普通 1-置顶），null 时新增按 0、更新保持原值 */
+    @Min(value = 0, message = "置顶标记不合法")
+    @Max(value = 1, message = "置顶标记不合法")
+    private Integer pinned;
+
     /** 状态：0-草稿 1-发布，必须显式传入（用 0/1 与表结构对齐，不用布尔） */
     @NotNull(message = "状态不能为空")
     @Min(value = 0, message = "状态不合法")

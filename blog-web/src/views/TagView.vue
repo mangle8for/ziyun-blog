@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useHead } from '@unhead/vue'
 import { useRouter } from 'vue-router'
 
@@ -67,11 +67,40 @@ interface StarTag extends Tag {
   twDelay: string
 }
 
+/** 星海网格行数（画布高度也随行数展开，小标签集保持紧凑） */
+const seaRows = computed(() => {
+  const n = tags.value.length
+  if (!n) return 1
+  const cols = isMobile.value
+    ? Math.max(2, Math.ceil(Math.sqrt(n)))
+    : Math.max(3, Math.ceil(Math.sqrt(n * 3.2)))
+  return Math.ceil(n / cols)
+})
+
+/**
+ * 画布相对视口的放大倍数：标签散布在更大的「海」里，拖拽探索。
+ * 少量标签只微扩张（初始几乎全可见，保留拖拽余量不显空洞）；
+ * 标签多时按行数放大，探索空间随之增长（上限 220%）。
+ */
+const seaCanvasWidthPct = computed(() => (tags.value.length <= 6 ? 132 : 160))
+const seaCanvasHeightPct = computed(() => {
+  if (tags.value.length <= 6) return 122
+  return Math.min(220, Math.max(140, seaRows.value * 46))
+})
+const seaCanvasWidth = computed(() => `${seaCanvasWidthPct.value}%`)
+const seaCanvasHeight = computed(() => `${seaCanvasHeightPct.value}%`)
+
 /**
  * 星海布局：网格打散 + cell 内伪随机漂移。
  * 先按等分网格保证任意数量标签互不重叠（可读性底线），
- * 再在各自 cell 内随机偏移打破均匀感 —— 视觉上「散落」，
- * 数学上不碰撞；列数随容器宽高比展开（宽屏横向铺开，手机近方形）。
+ * 再在各自 cell 内随机偏移打破均匀感 —— 视觉上「散落」，数学上不碰撞。
+ *
+ * 坐标系两步走：
+ *   1. 先按「视口百分比」设计布局（初始全部落在可视区内、不贴边）；
+ *   2. 再线性映射到「画布坐标」（画布比视口大）。初始居中滚动时
+ *      视口恰好对准这片设计区 —— 标签全部可见；拖拽平移后星空
+ *      滚出视野，形成「在海上航行探索」的效果。标签永远钳制在
+ *      画布内部（一定范围内），不会漂出海域。
  */
 const starTags = computed<StarTag[]>(() => {
   const n = tags.value.length
@@ -80,16 +109,23 @@ const starTags = computed<StarTag[]>(() => {
     ? Math.max(2, Math.ceil(Math.sqrt(n)))
     : Math.max(3, Math.ceil(Math.sqrt(n * 3.2)))
   const rows = Math.ceil(n / cols)
-  // 边缘安全区：药丸标签以中心定位，太贴边会被圆角卡片裁剪
+  // 边缘安全区（视口百分比）：药丸标签以中心定位，太贴边会被圆角卡片裁剪
   // （移动端标签更宽，按半宽预留更大的百分比安全区）
   const edge = isMobile.value ? 22 : 11
+  // 视口坐标 -> 画布坐标映射：初始滚动居中时视口对准画布正中的 100/W 区段
+  const originX = ((seaCanvasWidthPct.value - 100) / 2) * (100 / seaCanvasWidthPct.value)
+  const scaleX = 100 / seaCanvasWidthPct.value
+  const originY = ((seaCanvasHeightPct.value - 100) / 2) * (100 / seaCanvasHeightPct.value)
+  const scaleY = 100 / seaCanvasHeightPct.value
   return tags.value.map((t, i) => {
     const rnd = mulberry32(0x9e3779b9 ^ ((i + 1) * 2654435761))
     const col = i % cols
     const row = Math.floor(i / cols)
     const rawX = ((col + 0.16 + rnd() * 0.68) / cols) * 100
-    const x = Math.min(100 - edge, Math.max(edge, rawX))
-    const y = ((row + 0.16 + rnd() * 0.68) / rows) * 100
+    const viewX = Math.min(100 - edge, Math.max(edge, rawX))
+    const viewY = ((row + 0.16 + rnd() * 0.68) / rows) * 100
+    const x = originX + viewX * scaleX
+    const y = originY + viewY * scaleY
     const count = counts.value.get(t.id)
     const size: StarTag['size'] =
       count === undefined
@@ -114,6 +150,55 @@ const starTags = computed<StarTag[]>(() => {
     }
   })
 })
+
+// ==================== 星海画布拖拽平移 ====================
+// 成熟方案：原生滚动容器 + Pointer Events 拖拽改写 scrollLeft/scrollTop。
+// 边界钳制由浏览器滚动机制天然保证（画布 160%x N% 超出视口即有界），
+// 无需手写 clamp；setPointerCapture 保证指针移出容器也持续跟踪。
+const viewportEl = ref<HTMLElement | null>(null)
+const dragging = ref(false)
+const showHint = ref(true)
+let panPointerId: number | null = null
+let panLast = { x: 0, y: 0 }
+
+/** 只有按下在空白处才进入拖拽：标签按钮的点击交互完全不受影响 */
+function onPanDown(e: PointerEvent) {
+  if ((e.target as HTMLElement).closest('button')) return
+  const el = viewportEl.value
+  if (!el) return
+  panPointerId = e.pointerId
+  panLast = { x: e.clientX, y: e.clientY }
+  dragging.value = true
+  el.setPointerCapture(e.pointerId)
+}
+
+function onPanMove(e: PointerEvent) {
+  if (!dragging.value || e.pointerId !== panPointerId) return
+  const el = viewportEl.value
+  if (!el) return
+  const dx = e.clientX - panLast.x
+  const dy = e.clientY - panLast.y
+  if (dx !== 0 || dy !== 0) showHint.value = false
+  panLast = { x: e.clientX, y: e.clientY }
+  el.scrollLeft -= dx
+  el.scrollTop -= dy
+}
+
+function onPanUp(e: PointerEvent) {
+  if (e.pointerId !== panPointerId) return
+  dragging.value = false
+  panPointerId = null
+  const el = viewportEl.value
+  if (el?.hasPointerCapture(e.pointerId)) el.releasePointerCapture(e.pointerId)
+}
+
+/** 初始定位到画布中心：向四周都有可探索的留白 */
+function centerSea() {
+  const el = viewportEl.value
+  if (!el) return
+  el.scrollLeft = (el.scrollWidth - el.clientWidth) / 2
+  el.scrollTop = (el.scrollHeight - el.clientHeight) / 2
+}
 
 async function loadTags() {
   try {
@@ -159,6 +244,7 @@ onMounted(() => {
   isMobile.value = mobileMq.matches
   mobileMq.addEventListener('change', onMqChange)
   loadTags()
+  nextTick(centerSea)
 })
 
 onBeforeUnmount(() => {
@@ -173,36 +259,52 @@ onBeforeUnmount(() => {
       <p class="page-sub">散落在星海中的关键词</p>
     </header>
 
-    <!-- 星海：标签是散落其间的发光星点（网格打散防重叠 + 伪随机漂移造「散落」感） -->
+    <!-- 星海：可拖拽画布。标签是散落其间的发光星点（网格打散防重叠 +
+         伪随机漂移造「散落」感）；按住空白处拖动可平移探索整片海域 -->
     <GlassCard padded="lg" no-hover class="star-sea">
-      <div class="sea-dust dust-a" aria-hidden="true"></div>
-      <div class="sea-dust dust-b" aria-hidden="true"></div>
+      <div
+        ref="viewportEl"
+        class="sea-viewport"
+        :class="{ dragging }"
+        @pointerdown="onPanDown"
+        @pointermove="onPanMove"
+        @pointerup="onPanUp"
+        @pointercancel="onPanUp"
+      >
+        <div class="sea-canvas" :style="{ width: seaCanvasWidth, height: seaCanvasHeight }">
+          <div class="sea-dust dust-a" aria-hidden="true"></div>
+          <div class="sea-dust dust-b" aria-hidden="true"></div>
 
-      <template v-if="starTags.length">
-        <div
-          v-for="(s, i) in starTags"
-          :key="s.id"
-          class="star-pos"
-          :style="{ left: `${s.x}%`, top: `${s.y}%`, animationDelay: `${i * 70}ms` }"
-        >
-          <button
-            type="button"
-            class="sea-tag"
-            :class="[`size-${s.size}`, { active: activeId === s.id }]"
-            :style="{
-              '--float-dur': s.floatDur,
-              '--float-delay': s.floatDelay,
-              '--tw-delay': s.twDelay,
-            }"
-            :title="tagTitle(s)"
-            @click="select(s.id)"
-          >
-            <i class="star-core" aria-hidden="true"></i>
-            <span class="star-label"># {{ s.name }}</span>
-          </button>
+          <template v-if="starTags.length">
+            <div
+              v-for="(s, i) in starTags"
+              :key="s.id"
+              class="star-pos"
+              :style="{ left: `${s.x}%`, top: `${s.y}%`, animationDelay: `${i * 70}ms` }"
+            >
+              <button
+                type="button"
+                class="sea-tag"
+                :class="[`size-${s.size}`, { active: activeId === s.id }]"
+                :style="{
+                  '--float-dur': s.floatDur,
+                  '--float-delay': s.floatDelay,
+                  '--tw-delay': s.twDelay,
+                }"
+                :title="tagTitle(s)"
+                @click="select(s.id)"
+              >
+                <i class="star-core" aria-hidden="true"></i>
+                <span class="star-label"># {{ s.name }}</span>
+              </button>
+            </div>
+          </template>
+          <p v-else-if="tagsReady" class="sea-empty">星海静谧，还没有关键词散落于此</p>
         </div>
-      </template>
-      <p v-else-if="tagsReady" class="sea-empty">星海静谧，还没有关键词散落于此</p>
+      </div>
+      <transition name="hint-fade">
+        <p v-if="showHint && starTags.length" class="sea-hint">✦ 按住空白处拖动 · 探索星海</p>
+      </transition>
     </GlassCard>
 
     <!-- 该标签下的文章：骨架屏占位 -> 内容无缝替换（与首页一致的懒加载策略） -->
@@ -265,12 +367,57 @@ onBeforeUnmount(() => {
   position: relative;
   height: 360px;
   margin-bottom: 28px;
-  overflow: hidden;
+  overflow: hidden; /* 圆角裁剪拖拽画布的溢出内容 */
 }
 html.dark .star-sea {
   --sea-dust: rgba(226, 233, 255, 0.85);
   --star-core: #f2f5ff;
   --star-glow: rgba(148, 136, 245, 0.55);
+}
+
+/* 视口：原生滚动容器承载拖拽平移（成熟方案：改写 scrollLeft/scrollTop，
+ * 边界钳制由浏览器滚动机制天然保证）。滚动条隐藏，触摸端 touch-action: pan-y
+ * 让竖向滑动仍归页面滚动，横向拖拽才平移星海。 */
+.sea-viewport {
+  position: absolute;
+  inset: 0;
+  overflow: auto;
+  scrollbar-width: none;
+  cursor: grab;
+  touch-action: pan-y;
+  overscroll-behavior: contain;
+}
+.sea-viewport::-webkit-scrollbar {
+  display: none;
+}
+.sea-viewport.dragging {
+  cursor: grabbing;
+}
+
+/* 画布：比视口更大（宽 160%，高随行数 132%~220%），坐标相对画布散布 */
+.sea-canvas {
+  position: relative;
+  min-height: 100%;
+}
+
+.sea-hint {
+  position: absolute;
+  bottom: 12px;
+  left: 0;
+  right: 0;
+  margin: 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 12px;
+  letter-spacing: 2px;
+  pointer-events: none;
+  opacity: 0.75;
+}
+.hint-fade-leave-active {
+  transition: opacity 0.6s ease;
+}
+.hint-fade-leave-to {
+  opacity: 0;
 }
 
 /* 背景星尘：box-shadow 批量撒点（零 DOM 成本），双层不同节奏闪烁 */
@@ -402,9 +549,12 @@ html.dark .star-sea {
   text-overflow: ellipsis;
 }
 
-/* 悬停聚焦： hovered 星点亮，其余星体黯淡退后（对比出「观测」感） */
+/* 悬停聚焦：仅当指针真正悬在「某颗星」上时，其余星体才黯淡退后。
+ * 用 :has 判断容器内存在被悬停的星 —— 直接用容器 :hover 会在
+ * 鼠标扫过空白区域时误黯淡全部标签（已修复的旧问题）。
+ * 旧浏览器不支持 :has 时优雅退化为不黯淡，不影响功能。 */
 @media (hover: hover) {
-  .star-sea:hover .sea-tag:not(:hover):not(.active) {
+  .star-sea:has(.sea-tag:hover) .sea-tag:not(:hover):not(.active) {
     opacity: 0.4;
   }
 }

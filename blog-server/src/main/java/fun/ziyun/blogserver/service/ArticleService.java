@@ -7,6 +7,7 @@ import fun.ziyun.blogserver.entity.Article;
 import fun.ziyun.blogserver.vo.ArticleDetailVO;
 import fun.ziyun.blogserver.vo.ArticleListItemVO;
 
+import java.time.LocalDate;
 import java.util.List;
 
 /**
@@ -29,13 +30,25 @@ public interface ArticleService extends IService<Article> {
     /**
      * 公开分页查询（仅已发布）。
      *
-     * @param page       页码（>=1）
-     * @param size       每页条数（1~50）
-     * @param categoryId 按分类过滤，null 表示不过滤
-     * @param tagId      按标签过滤，null 表示不过滤
-     * @param keyword    标题模糊搜索，null/空表示不过滤
+     * @param page          页码（>=1）
+     * @param size          每页条数（1~50）
+     * @param categoryId    按分类过滤，null 表示不过滤
+     * @param tagId         按标签过滤，null 表示不过滤
+     * @param keyword       标题模糊搜索，null/空表示不过滤
+     * @param beginDate     发布时间下界（含当日 00:00），null 表示不限
+     * @param endDate       发布时间上界（含当日 24:00），null 表示不限
+     * @param excludePinned true 时排除置顶文章（首页文章流，置顶由星耀区单独展示）
      */
-    PageResult<ArticleListItemVO> pagePublished(long page, long size, Long categoryId, Long tagId, String keyword);
+    PageResult<ArticleListItemVO> pagePublished(long page, long size, Long categoryId, Long tagId,
+                                                String keyword, LocalDate beginDate, LocalDate endDate,
+                                                boolean excludePinned);
+
+    /**
+     * 置顶文章清单（仅已发布，按发布时间倒序）。
+     *
+     * @param limit 数量上限（1~10）
+     */
+    List<ArticleListItemVO> listPinned(int limit);
 
     /** 公开详情（仅已发布），带上一篇/下一篇导航 */
     ArticleDetailVO getPublishedDetail(Long id);
@@ -64,6 +77,9 @@ public interface ArticleService extends IService<Article> {
 
     /** 切换文章状态（草稿<->发布） */
     void changeStatus(Long id, Integer status);
+
+    /** 切换文章置顶（幂等：同状态短路） */
+    void changePinned(Long id, Integer pinned);
 
     /** 删除文章（逻辑删 article + 物理删关联表记录） */
     void delete(Long id);

@@ -107,6 +107,7 @@ CREATE TABLE `article` (
     `status`      TINYINT      NOT NULL DEFAULT 0 COMMENT '状态：0-草稿 1-发布（发布后才对外可见）',
     `view_count`  INT          NOT NULL DEFAULT 0 COMMENT '浏览量（P2 起异步累加）',
     `like_count`  INT          NOT NULL DEFAULT 0 COMMENT '点赞数（预留字段，v1 未实现点赞功能）',
+    `pinned`      TINYINT      NOT NULL DEFAULT 0 COMMENT '置顶：0-普通 1-置顶（首页星耀推荐区展示，可多篇）',
     `create_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
     `update_time` DATETIME     NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
     `deleted`     TINYINT      NOT NULL DEFAULT 0 COMMENT '逻辑删除：0-未删 1-已删',

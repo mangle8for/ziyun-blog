@@ -28,6 +28,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
@@ -53,7 +54,9 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
     // ==================== 公开查询 ====================
 
     @Override
-    public PageResult<ArticleListItemVO> pagePublished(long page, long size, Long categoryId, Long tagId, String keyword) {
+    public PageResult<ArticleListItemVO> pagePublished(long page, long size, Long categoryId, Long tagId,
+                                                       String keyword, LocalDate beginDate, LocalDate endDate,
+                                                       boolean excludePinned) {
         // LambdaQueryWrapper：方法引用 Article::getStatus 替代硬编码列名，
         // 列改名时编译器直接报错，不会出现「改库漏改 SQL」的运行时问题。
         // 对照原生 MyBatis：动态条件要靠 XML <if test> 逐段拼，这里
@@ -70,6 +73,12 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
                 // 若未来改为字符串条件，必须换成参数化写法。
                 .inSql(tagId != null, Article::getId,
                         "SELECT article_id FROM article_tag WHERE tag_id = " + tagId)
+                // 发布时间范围（闭区间：begin 当日 00:00 ~ end 次日 00:00，
+                // 用 < 次日零点保证「含 end 当天全天」，且 DATETIME 索引可走范围扫描）
+                .ge(beginDate != null, Article::getCreateTime, beginDate == null ? null : beginDate.atStartOfDay())
+                .lt(endDate != null, Article::getCreateTime, endDate == null ? null : endDate.plusDays(1).atStartOfDay())
+                // 首页文章流排除置顶（星耀区已单独展示，避免重复出现）
+                .eq(excludePinned, Article::getPinned, 0)
                 // 列表按发布时间倒序，最新在前
                 .orderByDesc(Article::getCreateTime);
 
@@ -77,6 +86,17 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         // convert()：把每行实体转成 VO（Page 泛型转换的 MP 内置能力），
         // 再统一交给 PageResult.from 包装 —— 与 Controller 层零耦合。
         return PageResult.from(pageResult.convert(this::toListItemVO));
+    }
+
+    @Override
+    public List<ArticleListItemVO> listPinned(int limit) {
+        List<Article> articles = this.lambdaQuery()
+                .eq(Article::getStatus, ArticleStatus.PUBLISHED.getCode())
+                .eq(Article::getPinned, 1)
+                .orderByDesc(Article::getCreateTime)
+                .last("LIMIT " + Math.max(1, Math.min(limit, 10)))
+                .list();
+        return articles.stream().map(this::toListItemVO).toList();
     }
 
     @Override
@@ -135,6 +155,8 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setAuthorId(DEFAULT_AUTHOR_ID);
         // status 允许客户端直接指定（「保存草稿」与「立即发布」是两种常见操作）
         article.setStatus(dto.getStatus());
+        // 置顶选填：null 视为不置顶
+        article.setPinned(dto.getPinned() == null ? 0 : dto.getPinned());
         article.setViewCount(0);
         article.setLikeCount(0);
         // save() 触发雪花 ID 生成 + 时间字段填充（见 MetaObjectHandler）
@@ -157,6 +179,10 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
         article.setCover(dto.getCover());
         article.setCategoryId(dto.getCategoryId());
         article.setStatus(dto.getStatus());
+        // 置顶选填：null 表示本次不改动，保持原值（编辑器未提交该字段时不误清）
+        if (dto.getPinned() != null) {
+            article.setPinned(dto.getPinned());
+        }
         // updateById 配合 strictUpdateFill 时，若实体 updateTime 非 null 不会覆盖，
         // 因此业务层显式设置当前时间，确保修改后 update_time 必然刷新。
         article.setUpdateTime(LocalDateTime.now());
@@ -173,6 +199,18 @@ public class ArticleServiceImpl extends ServiceImpl<ArticleMapper, Article> impl
             return;
         }
         article.setStatus(status);
+        article.setUpdateTime(LocalDateTime.now());
+        this.updateById(article);
+    }
+
+    @Override
+    public void changePinned(Long id, Integer pinned) {
+        Article article = getEntityById(id);
+        // 幂等短路：与 changeStatus 同策略
+        if (article.getPinned() != null && article.getPinned().equals(pinned)) {
+            return;
+        }
+        article.setPinned(pinned);
         article.setUpdateTime(LocalDateTime.now());
         this.updateById(article);
     }

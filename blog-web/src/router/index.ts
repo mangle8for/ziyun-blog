@@ -17,8 +17,20 @@ const router = createRouter({
       component: () => import('@/layouts/PublicLayout.vue'),
       children: [
         { path: '', name: 'home', component: () => import('@/views/HomeView.vue') },
-        { path: 'article/:id', name: 'article-detail', component: () => import('@/views/ArticleDetailView.vue') },
-        { path: 'categories', name: 'categories', component: () => import('@/views/CategoryView.vue') },
+        {
+          path: 'article/:id',
+          name: 'article-detail',
+          component: () => import('@/views/ArticleDetailView.vue'),
+        },
+        // 独立文章页：时间轴 + 卡片流 + 下滑无限加载
+        { path: 'archives', name: 'archives', component: () => import('@/views/ArchivesView.vue') },
+        // 独立搜索页：标题/分类/标签/时间组合搜索
+        { path: 'search', name: 'search', component: () => import('@/views/SearchView.vue') },
+        {
+          path: 'categories',
+          name: 'categories',
+          component: () => import('@/views/CategoryView.vue'),
+        },
         { path: 'tags', name: 'tags', component: () => import('@/views/TagView.vue') },
         { path: 'about', name: 'about', component: () => import('@/views/AboutView.vue') },
         // 个人中心：需登录（任意角色），独立于管理后台
@@ -41,12 +53,36 @@ const router = createRouter({
       meta: { requiresAuth: true, requiresAdmin: true },
       children: [
         { path: '', redirect: '/admin/articles' },
-        { path: 'articles', name: 'admin-articles', component: () => import('@/views/admin/ArticleManageView.vue') },
-        { path: 'articles/new', name: 'admin-article-new', component: () => import('@/views/admin/ArticleEditView.vue') },
-        { path: 'articles/:id/edit', name: 'admin-article-edit', component: () => import('@/views/admin/ArticleEditView.vue') },
-        { path: 'categories', name: 'admin-categories', component: () => import('@/views/admin/CategoryManageView.vue') },
-        { path: 'tags', name: 'admin-tags', component: () => import('@/views/admin/TagManageView.vue') },
-        { path: 'users', name: 'admin-users', component: () => import('@/views/admin/UserManageView.vue') },
+        {
+          path: 'articles',
+          name: 'admin-articles',
+          component: () => import('@/views/admin/ArticleManageView.vue'),
+        },
+        {
+          path: 'articles/new',
+          name: 'admin-article-new',
+          component: () => import('@/views/admin/ArticleEditView.vue'),
+        },
+        {
+          path: 'articles/:id/edit',
+          name: 'admin-article-edit',
+          component: () => import('@/views/admin/ArticleEditView.vue'),
+        },
+        {
+          path: 'categories',
+          name: 'admin-categories',
+          component: () => import('@/views/admin/CategoryManageView.vue'),
+        },
+        {
+          path: 'tags',
+          name: 'admin-tags',
+          component: () => import('@/views/admin/TagManageView.vue'),
+        },
+        {
+          path: 'users',
+          name: 'admin-users',
+          component: () => import('@/views/admin/UserManageView.vue'),
+        },
       ],
     },
     // 兜底：未知路径回首页

@@ -168,6 +168,8 @@ export interface ArticleListItem {
   status: ArticleStatus
   viewCount: number
   likeCount: number
+  /** 置顶：0-普通 1-置顶（首页星耀区/管理端列表展示） */
+  pinned: 0 | 1
   createTime: string
   updateTime: string
   tags: TagItem[]
@@ -205,13 +207,17 @@ export interface TagItem {
   name: string
 }
 
-/** 文章分页查询参数（公开列表） */
+/** 文章分页查询参数（公开列表；时间闭区间含端点日，格式 yyyy-MM-dd） */
 export interface ArticleQuery {
   page?: number
   size?: number
   keyword?: string
   categoryId?: string
   tagId?: string
+  beginDate?: string
+  endDate?: string
+  /** 首页文章流置 true：排除置顶（星耀区单独展示，避免重复） */
+  excludePinned?: boolean
 }
 
 /** 管理端分页查询参数（含状态过滤） */
@@ -230,11 +236,18 @@ export interface ArticlePayload {
   categoryId?: string
   tagIds?: string[]
   status: ArticleStatus
+  /** 置顶：选填（编辑器不提交该字段时后端保持原值） */
+  pinned?: 0 | 1
 }
 
 /** 文章状态切换载荷，对齐后端 StatusUpdateDTO */
 export interface ArticleStatusPayload {
   status: ArticleStatus
+}
+
+/** 文章置顶切换载荷，对齐后端 PinnedUpdateDTO */
+export interface ArticlePinnedPayload {
+  pinned: 0 | 1
 }
 
 // ==================== 文件 ====================

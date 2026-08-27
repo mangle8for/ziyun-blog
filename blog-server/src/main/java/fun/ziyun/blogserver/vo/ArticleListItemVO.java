@@ -45,6 +45,9 @@ public class ArticleListItemVO {
 
     private Integer likeCount;
 
+    /** 置顶：0-普通 1-置顶（前台星耀区/管理端列表展示） */
+    private Integer pinned;
+
     private LocalDateTime createTime;
 
     /** 更新时间（管理端列表展示，编辑后由服务层刷新） */

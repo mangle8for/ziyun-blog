@@ -2,9 +2,14 @@
 import { onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Delete, Edit, Plus, Refresh } from '@element-plus/icons-vue'
+import { Delete, Edit, Plus, Refresh, Star } from '@element-plus/icons-vue'
 
-import { deleteArticle, getArticleManagePage, updateArticleStatus } from '@/api/article'
+import {
+  deleteArticle,
+  getArticleManagePage,
+  updateArticlePinned,
+  updateArticleStatus,
+} from '@/api/article'
 import GlassCard from '@/components/GlassCard.vue'
 import type { ArticleListItem, ArticleStatus } from '@/types'
 
@@ -58,12 +63,24 @@ async function toggleStatus(row: ArticleListItem) {
   load()
 }
 
+/** 置顶切换：可复数置顶，首页「星耀推荐」按发布时间倒序展示 */
+async function togglePinned(row: ArticleListItem) {
+  const next: 0 | 1 = row.pinned === 1 ? 0 : 1
+  await updateArticlePinned(row.id, { pinned: next })
+  ElMessage.success(next === 1 ? '已置顶' : '已取消置顶')
+  load()
+}
+
 async function onDelete(row: ArticleListItem) {
-  await ElMessageBox.confirm(`确认删除「${row.title}」？删除后可在数据库恢复（逻辑删除）。`, '删除确认', {
-    type: 'warning',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-  })
+  await ElMessageBox.confirm(
+    `确认删除「${row.title}」？删除后可在数据库恢复（逻辑删除）。`,
+    '删除确认',
+    {
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    },
+  )
   await deleteArticle(row.id)
   ElMessage.success('已删除')
   load()
@@ -96,7 +113,10 @@ onMounted(load)
       <el-table v-loading="loading" :data="articles" style="width: 100%">
         <el-table-column label="标题" min-width="220">
           <template #default="{ row }">
-            <span class="cell-title" @click="goEdit(row.id)">{{ row.title }}</span>
+            <span class="cell-title" @click="goEdit(row.id)">
+              <span v-if="row.pinned === 1" class="pin-mark" title="已置顶">★</span>
+              {{ row.title }}
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="分类" width="110">
@@ -104,7 +124,9 @@ onMounted(load)
         </el-table-column>
         <el-table-column label="标签" min-width="160">
           <template #default="{ row }">
-            <el-tag v-for="t in row.tags" :key="t.id" size="small" class="cell-tag">{{ t.name }}</el-tag>
+            <el-tag v-for="t in row.tags" :key="t.id" size="small" class="cell-tag">{{
+              t.name
+            }}</el-tag>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="90">
@@ -118,7 +140,7 @@ onMounted(load)
         <el-table-column label="更新时间" width="150">
           <template #default="{ row }">{{ formatDateTime(row.updateTime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <el-button :icon="Edit" link type="primary" @click="goEdit(row.id)">编辑</el-button>
             <el-button
@@ -129,7 +151,17 @@ onMounted(load)
             >
               {{ row.status === 1 ? '转草稿' : '发布' }}
             </el-button>
-            <el-button :icon="Delete" link type="danger" @click="onDelete(row as ArticleListItem)">删除</el-button>
+            <el-button
+              :icon="Star"
+              link
+              :type="row.pinned === 1 ? 'warning' : 'primary'"
+              @click="togglePinned(row as ArticleListItem)"
+            >
+              {{ row.pinned === 1 ? '取消置顶' : '置顶' }}
+            </el-button>
+            <el-button :icon="Delete" link type="danger" @click="onDelete(row as ArticleListItem)"
+              >删除</el-button
+            >
           </template>
         </el-table-column>
         <template #empty>
@@ -168,6 +200,12 @@ onMounted(load)
 }
 .cell-title:hover {
   color: var(--color-primary);
+}
+
+/* 置顶星标：标题前的点缀色小星 */
+.pin-mark {
+  color: var(--color-accent);
+  margin-right: 4px;
 }
 
 .cell-tag {

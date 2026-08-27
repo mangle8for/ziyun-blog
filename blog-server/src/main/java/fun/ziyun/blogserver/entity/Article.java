@@ -58,6 +58,9 @@ public class Article {
     /** 点赞数（v1 预留字段，暂无点赞接口） */
     private Integer likeCount;
 
+    /** 置顶：0-普通 1-置顶（首页「星耀推荐」展示，可多篇） */
+    private Integer pinned;
+
     /** 创建时间（INSERT 时自动填充） */
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createTime;
