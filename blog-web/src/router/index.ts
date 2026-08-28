@@ -103,13 +103,20 @@ const router = createRouter({
  *  - 未登录访问管理区 -> 跳登录页并携带回跳地址；
  *  - 已登录但非管理员 -> 跳首页并提示（普通用户无管理入口）。
  */
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
   const userStore = useUserStore()
   if (to.meta.requiresAuth && !userStore.isLoggedIn) {
     return { path: '/login', query: { redirect: to.fullPath } }
   }
-  if (to.meta.requiresAdmin && !userStore.isAdmin) {
-    return { path: '/' }
+  if (to.meta.requiresAdmin) {
+    // 刷新后 userInfo 尚未由 App.vue 恢复完成时，先拉取再判定，
+    // 否则深链进入 /admin 会被误判为非管理员而踢回首页
+    if (!userStore.userInfo && userStore.isLoggedIn) {
+      await userStore.fetchProfile().catch(() => {})
+    }
+    if (!userStore.isAdmin) {
+      return { path: '/' }
+    }
   }
   return true
 })

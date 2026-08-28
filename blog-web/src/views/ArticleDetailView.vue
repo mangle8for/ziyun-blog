@@ -1,21 +1,17 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useHead } from '@unhead/vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ArrowLeft, ArrowRight, List } from '@element-plus/icons-vue'
-import { MdPreview } from 'md-editor-v3'
-import 'md-editor-v3/lib/preview.css'
+import hljs from 'highlight.js/lib/common'
 
 import { getArticleDetail } from '@/api/article'
 import GlassCard from '@/components/GlassCard.vue'
 import ProgressiveImage from '@/components/ProgressiveImage.vue'
-import { useTheme } from '@/utils/theme'
 import type { ArticleDetail } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
-const { theme } = useTheme()
-
 const article = ref<ArticleDetail | null>(null)
 const loading = ref(true)
 const notFound = ref(false)
@@ -82,27 +78,24 @@ const activeIndex = ref(-1)
 /** 移动端目录抽屉开关（宽屏目录为右侧吸顶栏，窄屏改抽屉） */
 const tocDrawerVisible = ref(false)
 
-/** 从 Markdown 提取 h1-h4 标题：先剥离围栏代码块，避免 ``` 内 # 被误识别 */
-function parseToc(markdown: string): TocItem[] {
-  const withoutCode = markdown.replace(/```[\s\S]*?```/g, '')
-  const items: TocItem[] = []
-  const regex = /^(#{1,4})\s+(.+?)\s*$/gm
-  let match: RegExpExecArray | null
-  while ((match = regex.exec(withoutCode)) !== null) {
-    // 正则捕获组必然存在，?? 仅用于满足 TS 严格索引检查
-    const hashes = match[1] ?? ''
-    const title = match[2] ?? ''
-    items.push({ level: hashes.length, text: title.trim() })
-  }
-  return items
+/**
+ * 从正文 HTML 提取 h1-h4 标题构建目录。
+ * 用 DOMParser 离线解析内容字符串（不注入文档），天然跳过
+ * `<pre><code>` 代码块内的内容 —— 代码里的 `# 注释` 不会被误判为标题。
+ */
+function parseToc(html: string): TocItem[] {
+  const doc = new DOMParser().parseFromString(html, 'text/html')
+  return Array.from(doc.querySelectorAll('h1, h2, h3, h4')).map((el) => ({
+    level: Number(el.tagName.substring(1)),
+    text: (el.textContent ?? '').trim(),
+  }))
 }
 
 /**
  * 实时收集正文标题 DOM（点击/滚动时现查，不缓存）。
- * 为什么不缓存：md-editor-v3 在代码高亮等异步任务完成后会重渲染
- * 内容区，旧标题节点被替换脱离文档 —— 缓存引用 rect 全为 0，
- * 点击时计算出的滚动目标为 0，表现为「跳转完全无效」。
- * querySelectorAll 一次几十个节点，开销可忽略。
+ * 为什么不缓存：v-html 内容重挂载（上一篇/下一篇切换、高亮补跑）会替换标题
+ * 节点，缓存旧引用 rect 全为 0，点击时计算出的滚动目标为 0，
+ * 表现为「跳转完全无效」。querySelectorAll 一次几十个节点，开销可忽略。
  */
 function getHeadingElements(): HTMLElement[] {
   const root = document.querySelector('.article-content')
@@ -177,7 +170,7 @@ function onScroll() {
   activeIndex.value = current
 }
 
-/** MdPreview 的主题跟随全局（md-editor-v3 内置 dark 主题） */
+/** 加载文章详情（公开接口：草稿返回 404） */
 function loadDetail(id: string) {
   loading.value = true
   article.value = null
@@ -205,9 +198,15 @@ watch(
   },
 )
 
-/** 文章内容变化（加载/切换）后重建目录 */
-watch(article, () => {
+/** 文章内容变化（加载/切换）后：重建目录 + 渲染完成后跑代码高亮 */
+watch(article, async (a) => {
   buildToc()
+  if (!a) return
+  // v-html 渲染完成后再对代码块做语法高亮（hljs 逐块处理，跳过已高亮的）
+  await nextTick()
+  document
+    .querySelectorAll('.article-content pre code')
+    .forEach((el) => hljs.highlightElement(el as HTMLElement))
 })
 
 function formatDateTime(iso?: string) {
@@ -266,17 +265,9 @@ onBeforeUnmount(() => {
           <ProgressiveImage :src="article.cover" :alt="article.title" />
         </div>
 
-        <!-- Markdown 渲染：
-             MdPreview 与后台编辑器同源（所见即所得），内置代码高亮、
-             表格、图片等；动图(GIF)走图片语法，视频用 <video> 标签
-             （md-editor-v3 默认渲染 HTML 块）。主题随全局切换。 -->
-        <MdPreview
-          class="article-content"
-          :editor-id="'preview-' + article.id"
-          :model-value="article.content"
-          :theme="theme"
-          preview-theme="default"
-        />
+        <!-- 正文（编辑器产出的 HTML）：v-html 直出，代码块高亮在
+             watch(article) 中异步补跑；样式见 .article-content 系列 -->
+        <div class="article-content" v-html="article.content"></div>
       </GlassCard>
 
       <!-- 上一篇 / 下一篇导航 -->
@@ -541,13 +532,12 @@ onBeforeUnmount(() => {
   background: var(--bg-page);
 }
 
-/* Markdown 正文样式：穿透 MdPreview 内部，适配主题变量 */
+/* 正文排版：编辑器产出的 HTML 直出，观感与编辑器内一致 */
 .article-content {
-  --md-theme-bg-color: transparent;
-  background: transparent;
   color: var(--text-main);
   font-size: 15px;
   line-height: 1.85;
+  word-break: break-word;
 }
 
 /* 阅读排版：标题间距、段落呼吸感。
@@ -557,7 +547,9 @@ onBeforeUnmount(() => {
 .article-content :deep(h3),
 .article-content :deep(h4) {
   color: var(--text-main);
-  margin-top: 1.6em;
+  margin: 1.6em 0 0.5em;
+  font-weight: 800;
+  line-height: 1.4;
   scroll-margin-top: 76px;
 }
 .article-content :deep(p) {
@@ -567,9 +559,11 @@ onBeforeUnmount(() => {
   color: var(--color-primary);
 }
 .article-content :deep(blockquote) {
+  margin: 0.8em 0;
+  padding: 8px 16px;
   border-left: 3px solid var(--color-accent);
   color: var(--text-secondary);
-  background: var(--bg-card);
+  background: var(--bg-page);
   border-radius: 0 8px 8px 0;
 }
 .article-content :deep(img) {
@@ -580,15 +574,61 @@ onBeforeUnmount(() => {
   border-radius: 10px;
   max-width: 100%;
 }
-/* 长代码块/表格横向滚动，防止撑破移动端窄栏 */
+/* 行内代码与代码块：配色 token 见全局 hljs 主题（main.ts 引入） */
+.article-content :deep(code) {
+  padding: 2px 6px;
+  border-radius: 5px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
+  font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
+  font-size: 0.88em;
+}
 .article-content :deep(pre) {
+  padding: 14px 16px;
+  border-radius: 10px;
+  background: var(--bg-page);
+  border: 1px solid var(--border-color);
   overflow-x: auto;
   max-width: 100%;
+  line-height: 1.7;
+  font-size: 13.5px;
 }
+.article-content :deep(pre code) {
+  padding: 0;
+  border: none;
+  background: transparent;
+  font-size: inherit;
+}
+.article-content :deep(ul),
+.article-content :deep(ol) {
+  padding-left: 1.6em;
+}
+.article-content :deep(hr) {
+  border: none;
+  border-top: 1px dashed var(--border-color);
+  margin: 1.4em 0;
+}
+.article-content :deep(mark) {
+  padding: 0 3px;
+  border-radius: 4px;
+}
+/* 表格：基础描边 + 长表格横向滚动，防止撑破移动端窄栏 */
 .article-content :deep(table) {
   display: block;
   overflow-x: auto;
   max-width: 100%;
+  border-collapse: collapse;
+  margin: 0.8em 0;
+}
+.article-content :deep(th),
+.article-content :deep(td) {
+  border: 1px solid var(--border-color);
+  padding: 6px 12px;
+  text-align: left;
+}
+.article-content :deep(th) {
+  background: var(--bg-page);
+  font-weight: 700;
 }
 
 /* 移动端目录悬浮按钮（宽屏隐藏，侧栏目录已可见） */

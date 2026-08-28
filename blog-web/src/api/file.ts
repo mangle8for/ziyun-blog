@@ -12,8 +12,3 @@ export function uploadFile(file: File) {
     headers: { 'Content-Type': 'multipart/form-data' },
   })
 }
-
-/** md-editor-v3 的图片上传回调适配：组件要求返回 URL 数组 */
-export async function uploadImage(file: File): Promise<string> {
-  return uploadFile(file)
-}

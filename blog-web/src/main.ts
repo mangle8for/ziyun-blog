@@ -15,8 +15,21 @@ import router from './router'
 import '@/assets/styles/global.css'
 // 双主题设计令牌（亮色自然绿意 / 暗色星际拓荒）
 import '@/assets/styles/theme.css'
+// 代码语法高亮配色（亮色基线）：编辑器代码块与文章页共用；
+// 暗色覆盖见 global.css 中 html.dark 作用域的 .hljs-* 变量
+import 'highlight.js/styles/github.css'
 
 const app = createApp(App)
+
+// 仅开发环境：localhost 不可能进 OSS 防盗链白名单，开发时图片请求需
+// 免 Referer（依赖 OSS「允许空 Referer」保持开启）。生产不带此注入，
+// 正常携带页面 Referer 命中白名单（ziyun.fun / *.ziyun.fun）。
+if (import.meta.env.DEV) {
+  const meta = document.createElement('meta')
+  meta.name = 'referrer'
+  meta.content = 'no-referrer'
+  document.head.appendChild(meta)
+}
 
 app.use(createPinia())
 app.use(router)

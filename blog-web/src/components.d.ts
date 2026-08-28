@@ -42,6 +42,7 @@ declare module 'vue' {
     RouterView: typeof import('vue-router')['RouterView']
     SkeletonCard: typeof import('./components/SkeletonCard.vue')['default']
     StarfieldBackground: typeof import('./components/StarfieldBackground.vue')['default']
+    TiptapEditor: typeof import('./components/TiptapEditor.vue')['default']
   }
   export interface GlobalDirectives {
     vLoading: typeof import('element-plus/es')['ElLoadingDirective']

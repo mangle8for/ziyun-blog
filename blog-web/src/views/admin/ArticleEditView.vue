@@ -3,20 +3,16 @@ import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadUserFile } from 'element-plus'
-import { MdEditor } from 'md-editor-v3'
-import 'md-editor-v3/lib/style.css'
+import TiptapEditor from '@/components/TiptapEditor.vue'
 
 import { createArticle, getArticleManageDetail, updateArticle } from '@/api/article'
 import { createCategory, getCategoryList } from '@/api/category'
 import { createTag, getTagList } from '@/api/tag'
 import { uploadFile } from '@/api/file'
-import { useTheme } from '@/utils/theme'
 import type { ArticlePayload, Category, Tag } from '@/types'
 
 const route = useRoute()
 const router = useRouter()
-const { theme } = useTheme()
-
 /** 编辑模式：路由带 id 为编辑，否则新建 */
 const editId = computed(() => (route.params.id as string) || '')
 const isEdit = computed(() => !!editId.value)
@@ -33,20 +29,6 @@ const loading = ref(false)
 
 const categories = ref<Category[]>([])
 const tags = ref<Tag[]>([])
-
-// ---------- 编辑器图片上传 ----------
-/**
- * md-editor-v3 的图片上传回调：把所选图片传到对象存储，
- * 组件拿到返回的 URL 数组后自动插入 Markdown 图片语法。
- */
-async function onUploadImg(files: File[], callback: (urls: string[]) => void) {
-  try {
-    const urls = await Promise.all(files.map((f) => uploadFile(f)))
-    callback(urls)
-  } catch {
-    ElMessage.error('图片上传失败')
-  }
-}
 
 // ---------- 封面上传 ----------
 const coverFileList = ref<UploadUserFile[]>([])
@@ -244,13 +226,10 @@ onMounted(async () => {
       </div>
     </div>
 
-    <!-- Markdown 编辑器 -->
-    <MdEditor
+    <!-- 富文本编辑器（所见即所得）：v-model 为 HTML 正文，图片粘贴/拖拽自动上传 OSS -->
+    <TiptapEditor
       v-model="content"
-      :theme="theme"
-      class="md-editor"
-      placeholder="开始写作... 支持 Markdown、图片（拖拽或工具栏上传）、代码块、表格等"
-      :on-upload-img="onUploadImg"
+      placeholder="开始写作… 支持图片（粘贴/拖拽/工具栏上传）、代码块、表格、高亮、字体颜色与字号"
     />
 
     <!-- 新建分类对话框 -->
@@ -330,12 +309,6 @@ onMounted(async () => {
   height: 46px;
   object-fit: cover;
   border-radius: 8px;
-  border: 1px solid var(--border-color);
-}
-
-.md-editor {
-  height: 70vh;
-  border-radius: 12px;
   border: 1px solid var(--border-color);
 }
 </style>

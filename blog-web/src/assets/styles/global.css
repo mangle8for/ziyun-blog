@@ -101,3 +101,61 @@ a:hover {
 .el-loading-spinner .el-loading-text {
   color: var(--text-secondary);
 }
+
+/* ============================================================
+ * 代码语法高亮（highlight.js）
+ * 亮色基线为 main.ts 引入的 github.css；此处做两件事：
+ *  1) 让 .hljs 背景透明，融入各处 pre 的主题化底色；
+ *  2) html.dark 下整组换成 github-dark 配色（编辑器与文章页共用）。
+ * ============================================================ */
+.hljs {
+  background: transparent;
+}
+
+html.dark .hljs {
+  color: #c9d1d9;
+}
+html.dark .hljs-comment,
+html.dark .hljs-quote {
+  color: #8b949e;
+  font-style: italic;
+}
+html.dark .hljs-keyword,
+html.dark .hljs-selector-tag,
+html.dark .hljs-meta .hljs-keyword,
+html.dark .hljs-doctag,
+html.dark .hljs-template-tag {
+  color: #ff7b72;
+}
+html.dark .hljs-string,
+html.dark .hljs-regexp,
+html.dark .hljs-addition {
+  color: #a5d6ff;
+}
+html.dark .hljs-number,
+html.dark .hljs-literal,
+html.dark .hljs-attr,
+html.dark .hljs-attribute,
+html.dark .hljs-variable,
+html.dark .hljs-template-variable {
+  color: #79c0ff;
+}
+html.dark .hljs-title,
+html.dark .hljs-title.function_,
+html.dark .hljs-section {
+  color: #d2a8ff;
+}
+html.dark .hljs-type,
+html.dark .hljs-title.class_,
+html.dark .hljs-built_in {
+  color: #ffa657;
+}
+html.dark .hljs-tag,
+html.dark .hljs-name,
+html.dark .hljs-selector-id,
+html.dark .hljs-selector-class {
+  color: #7ee787;
+}
+html.dark .hljs-meta {
+  color: #8b949e;
+}
