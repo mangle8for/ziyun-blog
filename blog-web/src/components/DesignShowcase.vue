@@ -323,16 +323,16 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 .sc-block {
-  padding: 120px 18px;
+  padding: 34vh 18px;
   cursor: pointer;
   opacity: 0.32;
   transition: opacity 0.45s ease, transform 0.45s ease;
 }
 .sc-block:first-child {
-  padding-top: 40px;
+  padding-top: 12vh;
 }
 .sc-block:last-child {
-  padding-bottom: 40vh; /* 最后一块也能滚到中央探测带 */
+  padding-bottom: 45vh; /* 最后一块也能滚到中央探测带 */
 }
 .sc-block:hover {
   opacity: 0.65;
@@ -391,10 +391,15 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-/* 右列 sticky 面板 */
+/* 右列 sticky 面板：容器占满视口高、内部垂直居中 ——
+   滚动期间模拟界面始终居于屏幕中央（对齐 DeepSeek Harness 观感） */
 .sc-panel {
   position: sticky;
-  top: 100px;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
 }
 .sc-visual-wrap {
   border: 1px solid var(--border-color);
@@ -723,19 +728,49 @@ onBeforeUnmount(() => {
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
 }
 
-/* 移动端：面板贴导航下 sticky（缩小占屏），能力块节奏收紧 */
+/* 移动端：面板提前到能力块之前（DOM 顺序调整），吸附在导航下；
+   紧凑化模拟界面，保证小屏可读 */
 @media (max-width: 900px) {
   .showcase {
-    padding: 90px 20px 80px;
+    padding: 80px 16px 70px;
+  }
+  .sc-layout {
+    gap: 0;
   }
   .sc-panel {
-    top: 74px;
+    order: -1;
+    top: 60px;
+    height: auto;
+    padding: 6px 16px 26px;
+    /* 向下渐隐的底色：滚动文字从面板下方淡出，避免生硬重叠 */
+    background: linear-gradient(to bottom, var(--bg-page) 78%, transparent);
+  }
+  .sc-visual-wrap {
+    padding: 14px;
+    border-radius: 12px;
+  }
+  .mock {
+    padding: 12px;
+  }
+  .ai-body {
+    font-size: 13px;
+    line-height: 1.8;
   }
   .sc-block {
-    padding: 64px 10px;
+    padding: 20vh 8px;
+  }
+  .sc-block:first-child {
+    padding-top: 24px;
   }
   .sc-block:last-child {
-    padding-bottom: 24vh;
+    padding-bottom: 28vh;
+  }
+  .sc-block-title {
+    font-size: 18px;
+  }
+  .sc-block-desc {
+    font-size: 14px;
+    line-height: 1.9;
   }
 }
 
