@@ -78,6 +78,8 @@ export async function streamAiChat(
   const reader = response.body.getReader()
   const decoder = new TextDecoder('utf-8')
   let buffer = ''
+  /** 是否已收到过增量：连接中断但内容已生成时按正常完成处理 */
+  let gotAny = false
 
   /** 处理一个完整的 SSE 事件块（event + data 行） */
   const handleBlock = (block: string) => {
@@ -96,7 +98,10 @@ export async function streamAiChat(
       // data 为 JSON {"t":"增量文本"}（转义换行，保证单行传输）
       try {
         const chunk = JSON.parse(data)?.t
-        if (chunk) onDelta(chunk)
+        if (chunk) {
+          gotAny = true
+          onDelta(chunk)
+        }
       } catch {
         // 单块解析失败直接丢弃，不影响后续块
       }
@@ -112,15 +117,22 @@ export async function streamAiChat(
     // done：正常结束，外层循环读完自然返回
   }
 
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    let sep: number
-    while ((sep = buffer.indexOf('\n\n')) !== -1) {
-      const block = buffer.slice(0, sep)
-      buffer = buffer.slice(sep + 2)
-      handleBlock(block)
+  try {
+    while (true) {
+      const { done, value } = await reader.read()
+      if (done) break
+      buffer += decoder.decode(value, { stream: true })
+      let sep: number
+      while ((sep = buffer.indexOf('\n\n')) !== -1) {
+        const block = buffer.slice(0, sep)
+        buffer = buffer.slice(sep + 2)
+        handleBlock(block)
+      }
     }
+  } catch (e) {
+    // 连接中断：已收到内容视为完成（部分网关会以非优雅方式关闭流），
+    // 一个字都没收到才是真失败
+    if (gotAny) return
+    throw e
   }
 }

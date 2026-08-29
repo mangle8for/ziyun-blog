@@ -41,13 +41,27 @@ let metaAbort: AbortController | null = null
 async function runMetaAi(payload: Parameters<typeof streamAiChat>[0], onDelta: (t: string) => void) {
   metaAbort = new AbortController()
   let ok = true
+  let gotAny = false
   try {
-    await streamAiChat(payload, onDelta, metaAbort.signal)
+    await streamAiChat(
+      payload,
+      (t) => {
+        gotAny = true
+        onDelta(t)
+      },
+      metaAbort.signal,
+    )
+    // 流正常结束但零产出：多为思考模型把输出额度耗在了推理上
+    if (!gotAny) ElMessage.warning('AI 未返回内容（推理可能耗尽了输出额度），请重试')
   } catch (e) {
-    ok = false
     if (e instanceof DOMException && e.name === 'AbortError') {
-      ElMessage.info('已取消')
+      ok = false
+      ElMessage.info('已取消，已生成内容保留')
+    } else if (gotAny) {
+      // 内容已生成但连接中断：按完成处理，不再惊扰
+      ElMessage.info('连接中断，已生成内容已保留')
     } else {
+      ok = false
       ElMessage.error(e instanceof Error ? e.message : 'AI 生成失败')
     }
   } finally {

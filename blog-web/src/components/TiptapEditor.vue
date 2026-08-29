@@ -360,6 +360,7 @@ async function runAiStream(
   aiRunning.value = true
   aiAbortController = new AbortController()
   let buffer = ''
+  let deltaCount = 0
   let timer: number | null = null
   const flush = (isFinal: boolean) => {
     if (timer !== null) {
@@ -376,6 +377,7 @@ async function runAiStream(
     await streamAiChat(
       payload,
       (chunk) => {
+        deltaCount++
         buffer += chunk
         // ~60ms 合并一次写入，避免高频事务拖慢编辑器
         if (timer === null) {
@@ -385,10 +387,17 @@ async function runAiStream(
       aiAbortController.signal,
     )
     flush(true)
+    // 流正常结束但一个字都没产出：多为思考模型把输出额度耗在了推理上
+    if (deltaCount === 0) {
+      ElMessage.warning('AI 未返回内容（推理可能耗尽了输出额度），请重试')
+    }
   } catch (e) {
     flush(true)
     if (e instanceof DOMException && e.name === 'AbortError') {
       ElMessage.info('已取消，已生成内容保留（Ctrl+Z 可回退）')
+    } else if (deltaCount > 0) {
+      // 内容已生成但连接中断：按完成处理，不再惊扰
+      ElMessage.info('连接中断，已生成内容已保留')
     } else {
       ElMessage.error(e instanceof Error ? e.message : 'AI 生成失败')
     }
