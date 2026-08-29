@@ -1,15 +1,15 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
 import { ArrowRight, Brush, Cpu, Lock, MagicStick, Promotion, Search } from '@element-plus/icons-vue'
+import { useRouter } from 'vue-router'
 
 /**
- * 首页「设计思路」栏目：DeepSeek Harness 官网式的能力展示区。
+ * 首页「设计思路」栏目：滚动联动（scrollytelling）布局。
  *
- * <p>左侧为可点击的能力清单（自动轮播 + 悬停暂停），右侧为对应能力的
- * 纯 CSS 模拟界面（非截图，双主题自适应），切换走淡入上浮过渡。</p>
- *
- * <p>内容全部来自本项目真实实现：架构 / AI 写作助手 / 安全 / 交付 / 体验。</p>
+ * 右侧模拟界面面板 position:sticky 固定在视口中，滚动页面时左侧
+ * 能力块依次经过视口中央，IntersectionObserver 感知并切换激活态与
+ * 面板内容——无需点击，滑动即浏览（对齐 DeepSeek Harness 官网交互）。
+ * 标题层次与「星耀推荐」共用同一套设计语言（渐变字 + 弱化副标）。
  */
 
 const router = useRouter()
@@ -62,10 +62,11 @@ const FEATURES: Feature[] = [
 
 const active = ref(0)
 const current = computed(() => FEATURES[active.value] ?? FEATURES[0]!)
+const blockEls = ref<HTMLElement[]>([])
 
-function select(i: number) {
-  active.value = i
-  restartTimer()
+/** 点击能力块：平滑滚动至视口中央（滚动联动会自动激活） */
+function scrollToBlock(i: number) {
+  blockEls.value[i]?.scrollIntoView({ behavior: 'smooth', block: 'center' })
 }
 
 function goArchives() {
@@ -76,38 +77,38 @@ function goSearch() {
   router.push('/search')
 }
 
-// ---------- 自动轮播：进入视口才启动，悬停暂停，离开恢复 ----------
+// ---------- 滚动联动：视口中央探测带 + 入场显示 ----------
 const sectionEl = ref<HTMLElement | null>(null)
-const hovered = ref(false)
-let autoTimer: number | undefined
-let inView = false
-
-function restartTimer() {
-  if (autoTimer) window.clearInterval(autoTimer)
-  autoTimer = window.setInterval(() => {
-    if (inView && !hovered.value && !document.hidden) {
-      active.value = (active.value + 1) % FEATURES.length
-    }
-  }, 6500)
-}
-
+let centerObserver: IntersectionObserver | null = null
 let revealObserver: IntersectionObserver | null = null
 
 onMounted(() => {
-  restartTimer()
-  // 滚入视口后再开始入场动画与轮播，滚动体验更从容
+  // 中央探测带（视口上下各收 42%）：能力块滚入即激活对应面板
+  centerObserver = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (entry.isIntersecting) {
+          const idx = Number((entry.target as HTMLElement).dataset.idx)
+          if (!Number.isNaN(idx)) active.value = idx
+        }
+      }
+    },
+    { rootMargin: '-42% 0px -42% 0px', threshold: 0 },
+  )
+  blockEls.value.forEach((el) => centerObserver!.observe(el))
+
+  // 滚入视口后整段淡入
   revealObserver = new IntersectionObserver(
     (entries) => {
-      inView = entries[0]?.isIntersecting ?? false
-      if (inView) sectionEl.value?.classList.add('in-view')
+      if (entries[0]?.isIntersecting) sectionEl.value?.classList.add('in-view')
     },
-    { threshold: 0.2 },
+    { threshold: 0.15 },
   )
   if (sectionEl.value) revealObserver.observe(sectionEl.value)
 })
 
 onBeforeUnmount(() => {
-  if (autoTimer) window.clearInterval(autoTimer)
+  centerObserver?.disconnect()
   revealObserver?.disconnect()
 })
 </script>
@@ -119,41 +120,41 @@ onBeforeUnmount(() => {
       <h2 class="sc-title">一切皆模块，运行有迹可循</h2>
       <p class="sc-sub">
         这个博客不只是一个写字的地方——它本身就是一个完整的全栈工程样本。
-        点击左侧模块，看看每一层是怎么搭起来的。
+        向下滚动，看看每一层是怎么搭起来的。
       </p>
     </header>
 
-    <div class="sc-layout" @mouseenter="hovered = true" @mouseleave="hovered = false">
-      <!-- 左列：能力清单 -->
-      <div class="sc-list" role="tablist" aria-label="项目能力模块">
-        <button
+    <div class="sc-layout">
+      <!-- 左列：能力块流（滚动逐个激活） -->
+      <div class="sc-story">
+        <div
           v-for="(f, i) in FEATURES"
           :key="f.key"
-          class="sc-item"
+          :ref="(el) => (blockEls[i] = el as HTMLElement)"
+          class="sc-block"
           :class="{ active: i === active }"
-          role="tab"
-          :aria-selected="i === active"
-          type="button"
-          @click="select(i)"
+          :data-idx="i"
+          @click="scrollToBlock(i)"
         >
-          <el-icon class="sc-item-icon"><component :is="f.icon" /></el-icon>
-          <span class="sc-item-title">{{ f.title }}</span>
-          <ArrowRight class="sc-item-arrow" />
-        </button>
+          <h3 class="sc-block-title">
+            <el-icon class="sc-block-icon"><component :is="f.icon" /></el-icon>
+            {{ f.title }}
+            <ArrowRight class="sc-block-arrow" />
+          </h3>
+          <p class="sc-block-desc">{{ f.desc }}</p>
+          <div class="sc-chips">
+            <span v-for="c in f.chips" :key="c" class="sc-chip">{{ c }}</span>
+          </div>
+        </div>
       </div>
 
-      <!-- 右列：能力描述 + 模拟界面 -->
+      <!-- 右列：sticky 模拟界面面板（滚动联动切换） -->
       <div class="sc-panel">
         <Transition name="sc-fade" mode="out-in">
           <div :key="active" class="sc-visual-wrap">
-            <p class="sc-desc">{{ current.desc }}</p>
-            <div class="sc-chips">
-              <span v-for="c in current.chips" :key="c" class="sc-chip">{{ c }}</span>
-            </div>
-
             <!-- ===== 模拟界面 1：分层架构 ===== -->
             <div v-if="current.key === 'arch'" class="mock mock-arch">
-              <div class="arch-layer top">
+              <div class="arch-layer">
                 <span class="arch-chip">浏览器 · Vue 3 + Vite + TS</span>
                 <i class="arch-arrow">↓</i>
                 <span class="arch-chip mid">Nginx · 静态托管 / 反向代理</span>
@@ -192,7 +193,16 @@ onBeforeUnmount(() => {
 
             <!-- ===== 模拟界面 3：安全清单 ===== -->
             <div v-else-if="current.key === 'security'" class="mock mock-sec">
-              <div v-for="(s, i) in ['JWT + Redis 单会话白名单，顶号即踢', '登录限流：15 分钟 5 次失败自动锁定', 'API Key AES-GCM 加密落库，接口只回显掩码', 'CSP / X-Frame-Options 等安全响应头']" :key="i" class="sec-row">
+              <div
+                v-for="(s, i) in [
+                  'JWT + Redis 单会话白名单，顶号即踢',
+                  '登录限流：15 分钟 5 次失败自动锁定',
+                  'API Key AES-GCM 加密落库，接口只回显掩码',
+                  'CSP / X-Frame-Options 等安全响应头',
+                ]"
+                :key="i"
+                class="sec-row"
+              >
                 <span class="sec-check">✓</span>
                 <span class="sec-text">{{ s }}</span>
                 <span class="sec-tag">已启用</span>
@@ -201,7 +211,12 @@ onBeforeUnmount(() => {
 
             <!-- ===== 模拟界面 4：交付流水线 ===== -->
             <div v-else-if="current.key === 'delivery'" class="mock mock-pipe">
-              <div v-for="(step, i) in ['git push', 'Actions 构建', 'Docker 打包', 'rsync 上线', '健康检查 · 失败自动回滚']" :key="step" class="pipe-row" :style="{ animationDelay: `${i * 0.35}s` }">
+              <div
+                v-for="(step, i) in ['git push', 'Actions 构建', 'Docker 打包', 'rsync 上线', '健康检查 · 失败自动回滚']"
+                :key="step"
+                class="pipe-row"
+                :style="{ animationDelay: `${i * 0.35}s` }"
+              >
                 <span class="pipe-dot" />
                 <span class="pipe-name">{{ step }}</span>
                 <span v-if="i < 4" class="pipe-link" />
@@ -227,7 +242,7 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <!-- 栏目尾：文章入口（首页不再直出文章流） -->
+    <!-- 栏目尾：文章入口 -->
     <div class="sc-foot">
       <button class="sc-foot-btn" type="button" @click="goArchives">
         浏览全部文章 <ArrowRight />
@@ -242,10 +257,9 @@ onBeforeUnmount(() => {
 <style scoped>
 /* 入场：滚入视口后整段淡入上浮 */
 .showcase {
-  /* 与星耀区一致的限宽节奏：不全宽铺满，留呼吸边距 */
   max-width: 1200px;
   margin-inline: auto;
-  padding-inline: 24px;
+  padding: 130px 24px 110px;
   opacity: 0;
   transform: translateY(26px);
   transition: opacity 0.7s ease, transform 0.7s ease;
@@ -255,9 +269,9 @@ onBeforeUnmount(() => {
   transform: none;
 }
 
-/* 头部 */
+/* ---------- 头部：与「星耀推荐」同层次设计语言（渐变字标题） ---------- */
 .sc-head {
-  margin-bottom: 30px;
+  margin-bottom: 26px;
 }
 .sc-badge {
   display: inline-block;
@@ -268,110 +282,105 @@ onBeforeUnmount(() => {
   color: var(--color-primary);
   font-size: 13px;
   font-weight: 600;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 .sc-title {
-  margin: 0 0 12px;
-  font-size: clamp(24px, 3.4vw, 34px);
+  margin: 0 0 14px;
+  font-size: clamp(24px, 3.2vw, 32px);
   font-weight: 800;
-  color: var(--text-main);
-  letter-spacing: 0.5px;
+  letter-spacing: 3px;
+  background: linear-gradient(120deg, var(--color-primary), var(--color-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  width: fit-content;
 }
 .sc-sub {
   margin: 0;
   max-width: 640px;
-  color: var(--text-secondary);
-  font-size: 14.5px;
-  line-height: 1.9;
+  color: var(--text-muted);
+  font-size: 13px;
+  letter-spacing: 1px;
+  line-height: 2;
 }
 
-/* 布局：左清单 + 右面板 */
+/* ---------- 布局：左能力块流 + 右 sticky 面板 ---------- */
 .sc-layout {
   display: grid;
-  grid-template-columns: minmax(280px, 380px) minmax(0, 1fr);
-  gap: 26px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 56px;
   align-items: start;
 }
 @media (max-width: 900px) {
   .sc-layout {
     grid-template-columns: 1fr;
+    gap: 24px;
   }
 }
 
-/* 左列清单 */
-.sc-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  position: sticky;
-  top: 84px;
+/* 左列能力块：大间距制造滚动节奏，激活的块高亮、其余弱化 */
+.sc-story {
+  min-width: 0;
 }
-@media (max-width: 900px) {
-  .sc-list {
-    position: static;
-  }
+.sc-block {
+  padding: 120px 18px;
+  cursor: pointer;
+  opacity: 0.32;
+  transition: opacity 0.45s ease, transform 0.45s ease;
 }
-.sc-item {
+.sc-block:first-child {
+  padding-top: 40px;
+}
+.sc-block:last-child {
+  padding-bottom: 40vh; /* 最后一块也能滚到中央探测带 */
+}
+.sc-block:hover {
+  opacity: 0.65;
+}
+.sc-block.active {
+  opacity: 1;
+  transform: translateX(6px);
+}
+.sc-block-title {
   display: flex;
   align-items: center;
   gap: 10px;
-  width: 100%;
-  padding: 13px 16px;
-  border: 1px solid var(--border-color);
-  border-radius: 12px;
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: 14.5px;
-  cursor: pointer;
-  text-align: left;
-  transition: border-color 0.25s ease, color 0.25s ease, transform 0.25s ease, background-color 0.25s ease;
-}
-.sc-item:hover {
-  color: var(--text-main);
-  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
-  transform: translateX(4px);
-}
-.sc-item.active {
-  color: var(--color-primary);
-  border-color: var(--color-primary);
-  background: color-mix(in srgb, var(--color-primary) 8%, var(--bg-card));
+  margin: 0 0 16px;
+  font-size: 21px;
   font-weight: 700;
+  color: var(--text-main);
+  transition: color 0.4s ease;
 }
-.sc-item-icon {
-  font-size: 17px;
+.sc-block.active .sc-block-title {
+  color: var(--color-primary);
 }
-.sc-item-title {
-  flex: 1;
+.sc-block-icon {
+  font-size: 22px;
+  color: var(--color-primary);
 }
-.sc-item-arrow {
-  width: 14px;
-  height: 14px;
-  flex-shrink: 0;
+.sc-block-arrow {
+  width: 16px;
+  height: 16px;
+  margin-left: auto;
   opacity: 0;
-  transform: translateX(-6px);
-  transition: opacity 0.25s ease, transform 0.25s ease;
+  transform: translateX(-8px);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+  color: var(--color-primary);
 }
-.sc-item.active .sc-item-arrow,
-.sc-item:hover .sc-item-arrow {
+.sc-block.active .sc-block-arrow {
   opacity: 1;
   transform: none;
 }
-
-/* 右面板 */
-.sc-panel {
-  min-height: 380px;
-}
-.sc-desc {
-  margin: 0 0 14px;
+.sc-block-desc {
+  margin: 0 0 16px;
   font-size: 15px;
-  line-height: 1.95;
-  color: var(--text-main);
+  line-height: 2.05;
+  color: var(--text-secondary);
 }
 .sc-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 18px;
 }
 .sc-chip {
   padding: 3px 12px;
@@ -382,33 +391,43 @@ onBeforeUnmount(() => {
   font-size: 12px;
 }
 
-/* 面板切换过渡：淡入上浮 */
+/* 右列 sticky 面板 */
+.sc-panel {
+  position: sticky;
+  top: 100px;
+}
+.sc-visual-wrap {
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  background: var(--bg-card);
+  box-shadow: var(--shadow-card);
+  padding: 22px;
+}
 .sc-fade-enter-active,
 .sc-fade-leave-active {
-  transition: opacity 0.3s ease, transform 0.3s ease;
+  transition: opacity 0.32s ease, transform 0.32s ease;
 }
 .sc-fade-enter-from {
   opacity: 0;
-  transform: translateY(14px);
+  transform: translateY(16px);
 }
 .sc-fade-leave-to {
   opacity: 0;
-  transform: translateY(-8px);
+  transform: translateY(-10px);
 }
 
-/* ---------- 模拟界面通用（深色面板质感，双主题取变量） ---------- */
+/* ---------- 模拟界面通用 ---------- */
 .mock {
   border: 1px solid var(--border-color);
   border-radius: 14px;
-  background: var(--bg-card);
+  background: var(--bg-page);
   padding: 18px;
-  box-shadow: var(--shadow-card);
 }
 .mock-line {
   margin-top: 14px;
   padding: 8px 12px;
   border-radius: 8px;
-  background: var(--bg-page);
+  background: var(--bg-card);
   color: var(--text-muted);
   font-family: 'JetBrains Mono', Consolas, Monaco, monospace;
   font-size: 12px;
@@ -427,7 +446,7 @@ onBeforeUnmount(() => {
   padding: 9px 12px;
   border-radius: 10px;
   border: 1px solid var(--border-color);
-  background: var(--bg-page);
+  background: var(--bg-card);
   color: var(--text-main);
   font-size: 13px;
 }
@@ -459,7 +478,7 @@ onBeforeUnmount(() => {
   padding: 8px 10px;
   border: 1px solid var(--border-color);
   border-radius: 10px;
-  background: var(--bg-page);
+  background: var(--bg-card);
   flex-wrap: wrap;
 }
 .ai-bar-btn {
@@ -471,14 +490,13 @@ onBeforeUnmount(() => {
   border-radius: 6px;
   color: var(--text-secondary);
   font-size: 12px;
-  border: 1px solid transparent;
 }
 .ai-bar-btn.wide {
   padding: 0 8px;
 }
 .ai-bar-btn.ai-on {
   color: var(--color-primary);
-  border-color: color-mix(in srgb, var(--color-primary) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
   font-weight: 700;
 }
 .ai-bar-sep {
@@ -550,7 +568,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 11px 12px;
   border-radius: 10px;
-  background: var(--bg-page);
+  background: var(--bg-card);
   margin-bottom: 8px;
 }
 .sec-check {
@@ -646,7 +664,7 @@ onBeforeUnmount(() => {
   gap: 8px;
   padding: 14px;
   border-radius: 10px;
-  background: var(--bg-page);
+  background: var(--bg-card);
 }
 .sk {
   display: block;
@@ -677,7 +695,7 @@ onBeforeUnmount(() => {
   display: flex;
   justify-content: center;
   gap: 14px;
-  margin-top: 34px;
+  margin-top: 40px;
 }
 .sc-foot-btn {
   display: inline-flex;
@@ -703,6 +721,22 @@ onBeforeUnmount(() => {
 }
 .sc-foot-btn.ghost:hover {
   background: color-mix(in srgb, var(--color-primary) 10%, transparent);
+}
+
+/* 移动端：面板贴导航下 sticky（缩小占屏），能力块节奏收紧 */
+@media (max-width: 900px) {
+  .showcase {
+    padding: 90px 20px 80px;
+  }
+  .sc-panel {
+    top: 74px;
+  }
+  .sc-block {
+    padding: 64px 10px;
+  }
+  .sc-block:last-child {
+    padding-bottom: 24vh;
+  }
 }
 
 /* 减少动态偏好 */

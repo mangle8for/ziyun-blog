@@ -670,6 +670,8 @@ html.dark .horizon-pulse {
   max-width: 1200px;
   margin-inline: auto;
   padding-inline: 24px;
+  /* 三段式留白：首屏 / 星耀 / 设计思路各自成章，不再紧凑 */
+  padding-top: 96px;
 }
 
 .pinned-section {
