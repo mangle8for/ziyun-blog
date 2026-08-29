@@ -11,6 +11,11 @@
 spring:
   application:
     name: blog-server
+  mvc:
+    async:
+      # SSE 流式接口（AI 写作）单次请求可达数分钟：覆盖 Tomcat 默认 30s
+      # 异步超时，否则长生成会被容器强制掐断（浏览器表现为 network error）
+      request-timeout: 300000
 
   # 默认激活 dev 环境（可用 --spring.profiles.active=prod 命令行覆盖）
   profiles:

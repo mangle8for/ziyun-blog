@@ -283,6 +283,7 @@ function onFilesPicked(event: Event) {
 // ---------- AI 助手（流式写入，见 api/ai.ts 的 SSE 协议） ----------
 
 const aiRunning = ref(false)
+const aiStatusText = ref('AI 生成中…')
 let aiAbortController: AbortController | null = null
 
 /** 流式插入的位置游标：pos 为下一次插入点；polish 首块前需先删掉选区 */
@@ -352,51 +353,101 @@ function insertAiChunk(cursor: AiInsertCursor, rawChunk: string, isFinal: boolea
   })
 }
 
-/** 通用流式执行：节流 flush + 中断保留已生成内容 + 统一错误提示 */
+/** 去除生成文本开头与上下文尾部重复的部分（模型偶尔会复述衔接句） */
+function stripOverlap(context: string, generated: string): string {
+  const max = Math.min(48, context.length, generated.length)
+  for (let len = max; len >= 2; len--) {
+    if (context.endsWith(generated.slice(0, len))) {
+      return generated.slice(len)
+    }
+  }
+  return generated
+}
+
+/** 通用流式执行：节流 flush + 中断保留已生成内容 + 统一错误提示。
+ *  opts.dedupTailOf：续写场景传入上文，生成开头若与上文尾部重复则自动剔除
+ *  （首段先攒够比对长度再落笔，肉眼无感）。opts.startPos：AI 生成区域起点，
+ *  供「输出被截断自动接续」时提取已生成文本。 */
 async function runAiStream(
   payload: Parameters<typeof streamAiChat>[0],
   cursor: AiInsertCursor,
+  opts?: { dedupTailOf?: string; startPos?: number },
 ) {
   aiRunning.value = true
   aiAbortController = new AbortController()
+  aiStatusText.value = 'AI 生成中…'
+  const startPos = opts?.startPos ?? cursor.pos
+  // 衔接去重按轮生效：首轮以上文为基准，自动接续轮以「已生成文本尾部」为基准
+  let dedupTail: string | null = opts?.dedupTailOf ?? null
+  let dedupDone = dedupTail === null
   let buffer = ''
   let deltaCount = 0
   let timer: number | null = null
+
   const flush = (isFinal: boolean) => {
     if (timer !== null) {
       clearTimeout(timer)
       timer = null
     }
-    if (buffer) {
-      const chunk = buffer
-      buffer = ''
-      insertAiChunk(cursor, chunk, isFinal)
+    if (!buffer) return
+    // 首次落笔前先做衔接去重（攒够比对长度或最终收尾时才判定）
+    if (!dedupDone) {
+      if (!isFinal && buffer.length < 56) return
+      buffer = stripOverlap(dedupTail!, buffer)
+      dedupDone = true
+      if (!buffer) return
+    }
+    const chunk = buffer
+    buffer = ''
+    insertAiChunk(cursor, chunk, isFinal)
+  }
+  const onDelta = (chunk: string) => {
+    deltaCount++
+    buffer += chunk
+    // ~60ms 合并一次写入，避免高频事务拖慢编辑器
+    if (timer === null) {
+      timer = window.setTimeout(() => flush(false), 60)
     }
   }
-  try {
-    await streamAiChat(
-      payload,
-      (chunk) => {
-        deltaCount++
 
-        buffer += chunk
-        // ~60ms 合并一次写入，避免高频事务拖慢编辑器
-        if (timer === null) {
-          timer = window.setTimeout(() => flush(false), 60)
-        }
-      },
-      aiAbortController.signal,
-    )
+  let aborted = false
+  let anySuccess = false
+  try {
+    let finish = await streamAiChat(payload, onDelta, aiAbortController.signal)
+    ;(window as any).__finishProbe = finish
     flush(true)
-    // 流正常结束但一个字都没产出：多为思考模型把输出额度耗在了推理上
-    if (deltaCount === 0) {
+    // 输出达到上限被截断：以已生成文本为上下文自动接续（最多补写 2 轮）
+    let rounds = 1
+    while (finish === 'length' && rounds < 3 && !aborted) {
+      const generated = editor.value!.state.doc
+        .textBetween(Math.max(startPos, 0), cursor.pos, '\n')
+        .trim()
+      if (!generated) break
+      rounds++
+      aiStatusText.value = `输出较长已截断，正在自动接续（第 ${rounds - 1} 次）…`
+      // 新一轮同样可能复述上一轮结尾，去重基准换成已生成文本的尾部
+      dedupTail = generated.slice(-96)
+      dedupDone = false
+      buffer = ''
+      deltaCount = 0
+      finish = await streamAiChat(
+        { task: 'continue', text: generated.slice(-2000) },
+        onDelta,
+        aiAbortController.signal,
+      )
+      flush(true)
+    }
+    anySuccess = deltaCount > 0
+    // 全程零产出：多为思考模型把输出额度耗在了推理上
+    if (!anySuccess) {
       ElMessage.warning('AI 未返回内容（推理可能耗尽了输出额度），请重试')
     }
   } catch (e) {
     flush(true)
     if (e instanceof DOMException && e.name === 'AbortError') {
+      aborted = true
       ElMessage.info('已取消，已生成内容保留（Ctrl+Z 可回退）')
-    } else if (deltaCount > 0) {
+    } else if (anySuccess) {
       // 内容已生成但连接中断：按完成处理，不再惊扰
       ElMessage.info('连接中断，已生成内容已保留')
     } else {
@@ -434,13 +485,11 @@ async function runAiPolish() {
     return
   }
   const selected = e.state.doc.textBetween(from, to, '\n')
-  await runAiStream({ task: 'polish', text: selected }, {
-    pos: from,
-    deleteFrom: from,
-    deleteTo: to,
-    deleted: false,
-    carry: '',
-  })
+  await runAiStream(
+    { task: 'polish', text: selected },
+    { pos: from, deleteFrom: from, deleteTo: to, deleted: false, carry: '' },
+    { startPos: from },
+  )
 }
 
 async function runAiContinue() {
@@ -453,7 +502,11 @@ async function runAiContinue() {
   const pos = e.state.selection.to
   // 取光标前文做续写上下文（2000 字符足够模型接住语气）
   const before = e.state.doc.textBetween(Math.max(0, pos - 2000), pos, "\n")
-  await runAiStream({ task: "continue", text: before }, { pos, deleted: true, carry: "" })
+  await runAiStream(
+    { task: "continue", text: before },
+    { pos, deleted: true, carry: "" },
+    { dedupTailOf: before, startPos: pos },
+  )
 }
 
 async function runAiCustom() {
@@ -728,7 +781,7 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
         @click="cancelAi"
       >
         <el-icon class="is-loading"><Loading /></el-icon>
-        AI 生成中… 点击或按 ESC 取消
+        {{ aiStatusText }} 点击或按 ESC 取消
       </button>
       <span v-else-if="uploading > 0" class="tb-uploading">
         <el-icon class="is-loading"><Loading /></el-icon>
@@ -875,6 +928,13 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
   border-radius: 999px;
   padding: 0 10px;
   height: 24px;
+  /* 按钮默认底色在暗色主题下与紫色文字对比不足，显式使用主题变量 */
+  background: var(--bg-page);
+  color: var(--color-primary);
+}
+
+.zte-toolbar button.tb-cancel:hover {
+  border-color: var(--color-primary);
 }
 
 /* ---------- 编辑区排版（所见即所得，与前台文章页观感一致） ---------- */

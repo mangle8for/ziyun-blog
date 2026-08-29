@@ -40,13 +40,14 @@ export function testAiProvider(id: string) {
  * @param payload 任务与上下文
  * @param onDelta 每收到一段增量文本的回调（打字机效果）
  * @param signal  取消信号（AbortController.signal），中断后已生成内容保留
+ * @returns 结束原因：'stop'-正常结束 / 'length'-达到输出上限被截断（调用方可据此自动接续）/ null-流异常中断
  * @throws Error  前端解析到的业务错误消息（上游失败/未配置供应商等）
  */
 export async function streamAiChat(
   payload: AiChatPayload,
   onDelta: (chunk: string) => void,
   signal?: AbortSignal,
-): Promise<void> {
+): Promise<string | null> {
   const userStore = useUserStore()
   const baseURL = import.meta.env.VITE_API_BASE_URL || ''
   const response = await fetch(`${baseURL}/api/v1/ai/chat/stream`, {
@@ -80,6 +81,8 @@ export async function streamAiChat(
   let buffer = ''
   /** 是否已收到过增量：连接中断但内容已生成时按正常完成处理 */
   let gotAny = false
+  /** 上游结束原因（done 事件携带）：length = 达到输出上限被截断 */
+  let finishReason: string | null = null
 
   /** 处理一个完整的 SSE 事件块（event + data 行） */
   const handleBlock = (block: string) => {
@@ -113,8 +116,15 @@ export async function streamAiChat(
         // 保留默认消息
       }
       throw new Error(message)
+    } else if (event === 'done') {
+      // done 携带结束原因（length = 输出被截断，调用方可据此自动接续）
+      try {
+        finishReason = JSON.parse(data)?.finish ?? null
+      } catch {
+        finishReason = null
+      }
     }
-    // done：正常结束，外层循环读完自然返回
+    // 正常结束，外层循环读完自然返回
   }
 
   try {
@@ -132,7 +142,8 @@ export async function streamAiChat(
   } catch (e) {
     // 连接中断：已收到内容视为完成（部分网关会以非优雅方式关闭流），
     // 一个字都没收到才是真失败
-    if (gotAny) return
+    if (gotAny) return finishReason
     throw e
   }
+  return finishReason
 }

@@ -28,6 +28,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 
@@ -96,7 +97,32 @@ public class AiChatServiceImpl implements AiChatService {
         emitter.onTimeout(() -> cancel.accept("超时"));
         emitter.onError(t -> cancel.accept("错误"));
 
-        Runnable job = () -> doStream(emitter, provider, plainKey, models, dto, finalText);
+        // 心跳：思考型模型首字节前可能静默数十秒，定时发 SSE 注释行
+        //（": keepalive"，解析方忽略）保持连接活跃，防中间层按空闲掐断
+        java.util.concurrent.ScheduledExecutorService heartbeat =
+                java.util.concurrent.Executors.newSingleThreadScheduledExecutor(r2 -> {
+                    Thread t = new Thread(r2, "ai-heartbeat");
+                    t.setDaemon(true);
+                    return t;
+                });
+        ScheduledFuture<?> beat = heartbeat.scheduleAtFixedRate(() -> {
+            try {
+                synchronized (emitter) {
+                    emitter.send(SseEmitter.event().comment("keepalive"));
+                }
+            } catch (Exception e) {
+                // 发送失败说明连接已断，静默等待主流程收尾
+            }
+        }, 15, 15, java.util.concurrent.TimeUnit.SECONDS);
+
+        Runnable job = () -> {
+            try {
+                doStream(emitter, provider, plainKey, models, dto, finalText);
+            } finally {
+                beat.cancel(false);
+                heartbeat.shutdown();
+            }
+        };
         running.set(streamExecutor.submit(job));
         return emitter;
     }
@@ -106,6 +132,8 @@ public class AiChatServiceImpl implements AiChatService {
                           AiChatDTO dto, String text) {
         String model = models.get(0);
         TaskSpec spec = buildSpec(dto, text);
+        // finish_reason 跨 lambda 传递（length = 输出被截断，done 事件告知前端自动接续）
+        final String[] finishReason = {null};
         try {
             ObjectNode body = objectMapper.createObjectNode();
             body.put("model", model);
@@ -147,6 +175,10 @@ public class AiChatServiceImpl implements AiChatService {
                 }
                 try {
                     JsonNode root = objectMapper.readTree(payload);
+                    JsonNode finishNode = root.path("choices").path(0).path("finish_reason");
+                    if (!finishNode.isMissingNode() && !finishNode.isNull()) {
+                        finishReason[0] = finishNode.asText();
+                    }
                     JsonNode delta = root.path("choices").path(0).path("delta").path("content");
                     if (delta.isMissingNode() || delta.isNull()) {
                         return;
@@ -155,15 +187,22 @@ public class AiChatServiceImpl implements AiChatService {
                     if (!chunk.isEmpty()) {
                         ObjectNode event = objectMapper.createObjectNode();
                         event.put("t", chunk);
-                        emitter.send(SseEmitter.event().name("delta")
-                                .data(objectMapper.writeValueAsString(event)));
+                        synchronized (emitter) {
+                            emitter.send(SseEmitter.event().name("delta")
+                                    .data(objectMapper.writeValueAsString(event)));
+                        }
                     }
                 } catch (Exception parseEx) {
                     log.warn("AI 上游数据行解析失败，跳过：{}", abbreviate(payload));
                 }
             });
 
-            emitter.send(SseEmitter.event().name("done").data("{}"));
+            ObjectNode doneEvent = objectMapper.createObjectNode();
+            doneEvent.put("finish", finishReason[0] == null ? "stop" : finishReason[0]);
+            synchronized (emitter) {
+                emitter.send(SseEmitter.event().name("done")
+                        .data(objectMapper.writeValueAsString(doneEvent)));
+            }
             emitter.complete();
         } catch (InterruptedException e) {
             // 前端主动取消：上游连接已随中断释放，安静收尾
@@ -177,8 +216,10 @@ public class AiChatServiceImpl implements AiChatService {
             try {
                 ObjectNode event = objectMapper.createObjectNode();
                 event.put("message", message);
-                emitter.send(SseEmitter.event().name("error")
-                        .data(objectMapper.writeValueAsString(event)));
+                synchronized (emitter) {
+                    emitter.send(SseEmitter.event().name("error")
+                            .data(objectMapper.writeValueAsString(event)));
+                }
             } catch (Exception sendEx) {
                 log.debug("错误事件发送失败（客户端可能已断开）");
             }
@@ -198,15 +239,16 @@ public class AiChatServiceImpl implements AiChatService {
                     "你是专业的中文博客编辑。请润色用户给出的文字：保持原意、语气与既有 Markdown 行内标记"
                             + "（如 **加粗**、`代码`、[链接](url)）不变，提升流畅度与表达力；"
                             + "不要扩写、缩写、增删段落，不要输出任何解释或前后缀，只输出润色后的文本。",
-                    text, 4096, 0.5);
+                    text, 8192, 0.5);
             case "continue" -> new TaskSpec(
-                    "你是博客文章的续写助手。基于用户给出的正文片段自然续写：延续原文语气、主题与 Markdown 格式，"
-                            + "直接从断点继续输出内容，不要重复已有文字，不要添加标题、说明或总结性套话。",
-                    text, 3072, 0.7);
+                    "你是博客文章的续写助手。基于用户给出的正文片段自然续写：延续原文语气、主题与 Markdown 格式。"
+                            + "铁律：绝对不能重复、复述或换一种说法重写用户给出的任何已有文字（包括最后一句），"
+                            + "输出的第一个字就必须是全新的内容；不要添加标题、说明、道歉或总结性套话。",
+                    text, 8192, 0.7);
             case "summary" -> new TaskSpec(
                     "为用户的博客文章撰写中文摘要：100 字以内，概括核心内容与结论，客观陈述；"
                             + "直接输出摘要文本，不要「摘要：」之类的前缀，不要分点。",
-                    text, 500, 0.3);
+                    text, 1000, 0.3);
             case "title" -> new TaskSpec(
                     "为用户的博客文章拟 5 个候选标题：每行一个，不带序号、不加书名号、末尾无标点；"
                             + "风格贴合内容（技术类优先准确清晰，也可有适度的吸引力），只输出 5 行标题。",
@@ -217,7 +259,7 @@ public class AiChatServiceImpl implements AiChatService {
                     "候选标签：\n" + dto.getContext() + "\n\n文章内容：\n" + text, 200, 0.2);
             case "custom" -> new TaskSpec(
                     "你是博客写作助手。严格按用户的指令处理给出的文本，只输出处理结果，不要解释。",
-                    "指令：" + dto.getInstruction() + "\n\n文本：\n" + text, 4096, 0.7);
+                    "指令：" + dto.getInstruction() + "\n\n文本：\n" + text, 8192, 0.7);
             default -> throw new BusinessException(ResultCode.BAD_REQUEST, "不支持的任务类型");
         };
     }
