@@ -378,6 +378,7 @@ async function runAiStream(
       payload,
       (chunk) => {
         deltaCount++
+
         buffer += chunk
         // ~60ms 合并一次写入，避免高频事务拖慢编辑器
         if (timer === null) {
