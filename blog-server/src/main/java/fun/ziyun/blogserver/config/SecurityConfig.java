@@ -86,6 +86,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/v1/auth/avatar").authenticated()
                         // 用户管理接口：仅管理员（GET /api/v1/users 不能落入下方 GET 公开规则）
                         .requestMatchers("/api/v1/users/**").hasRole("ADMIN")
+                        // AI 供应商设置与写作对话：仅管理员（同理必须先于 GET 公开规则）——
+                        // 供应商列表是 GET，若漏声明会被下方 permitAll 放行泄露配置
+                        .requestMatchers("/api/v1/ai/**").hasRole("ADMIN")
                         // GET 公开接口（文章/分类/标签浏览）
                         .requestMatchers(HttpMethod.GET, "/api/v1/**").permitAll()
                         // 其余所有请求需要管理员权限（写操作/上传）

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, CollectionTag, DocumentAdd, List, Moon, PriceTag, Sunny, SwitchButton, User } from '@element-plus/icons-vue'
+import { ArrowLeft, CollectionTag, DocumentAdd, List, MagicStick, Moon, PriceTag, Sunny, SwitchButton, User } from '@element-plus/icons-vue'
 
 import { useUserStore } from '@/stores/user'
 import { useTheme } from '@/utils/theme'
@@ -29,6 +29,7 @@ const menuItems = [
   { path: '/admin/categories', label: '分类管理', icon: CollectionTag },
   { path: '/admin/tags', label: '标签管理', icon: PriceTag },
   { path: '/admin/users', label: '用户管理', icon: User },
+  { path: '/admin/ai', label: 'AI 设置', icon: MagicStick },
 ]
 
 const activePath = computed(() => route.path)

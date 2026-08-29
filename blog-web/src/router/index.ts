@@ -89,6 +89,11 @@ const router = createRouter({
           name: 'admin-users',
           component: () => import('@/views/admin/UserManageView.vue'),
         },
+        {
+          path: 'ai',
+          name: 'admin-ai',
+          component: () => import('@/views/admin/AiSettingsView.vue'),
+        },
       ],
     },
     // 兜底：未知路径回首页

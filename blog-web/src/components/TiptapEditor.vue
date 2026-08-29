@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { EditorContent, useEditor } from '@tiptap/vue-3'
 import { StarterKit } from '@tiptap/starter-kit'
 import { Image } from '@tiptap/extension-image'
@@ -12,6 +12,7 @@ import { common, createLowlight } from 'lowlight'
 import { ArrowDown, Loading } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 
+import { streamAiChat } from '@/api/ai'
 import { uploadFile } from '@/api/file'
 
 /**
@@ -93,6 +94,7 @@ const state = reactive({
   color: '',
   size: '',
   highlight: '',
+  hasSelection: false,
 })
 
 function refreshState() {
@@ -113,6 +115,7 @@ function refreshState() {
   state.orderedList = e.isActive('orderedList')
   state.link = e.isActive('link')
   state.table = e.isActive('table')
+  state.hasSelection = !e.state.selection.empty
   state.canUndo = e.can().undo()
   state.canRedo = e.can().redo()
   state.color = e.getAttributes('textStyle').color ?? ''
@@ -276,6 +279,214 @@ function onFilesPicked(event: Event) {
   if (files.length) void insertImages(files)
   input.value = ''
 }
+
+// ---------- AI 助手（流式写入，见 api/ai.ts 的 SSE 协议） ----------
+
+const aiRunning = ref(false)
+let aiAbortController: AbortController | null = null
+
+/** 流式插入的位置游标：pos 为下一次插入点；polish 首块前需先删掉选区 */
+interface AiInsertCursor {
+  pos: number
+  deleteFrom?: number
+  deleteTo?: number
+  deleted: boolean
+  carry: string
+}
+
+/**
+ * 把一段增量文本写进编辑器（单事务，高频 flush 靠 history 的
+ * newGroupDelay 聚合成一步撤销）。
+ * 换行语义：\n → 段内硬换行；\n\n → 拆分新段落（列表项内同样成立）。
+ * AI 偶尔输出的行内 Markdown 记号降级为纯文本（星号/反引号移除、链接取文字）。
+ */
+function insertAiChunk(cursor: AiInsertCursor, rawChunk: string, isFinal: boolean) {
+  const e = editor.value
+  if (!e) return
+  let text = cursor.carry + rawChunk
+  cursor.carry = ''
+  // 尾部悬挂换行先扣下（最多 2 个）：区分「段内换行」还是「新段落」要等后续字符，
+  // 否则 "\n\n" 会被拆成两次硬换行而不是一次段落拆分
+  if (!isFinal) {
+    const trailing = text.match(/\n{1,2}$/)?.[0] ?? ''
+    if (trailing) {
+      cursor.carry = trailing
+      text = text.slice(0, -trailing.length)
+    }
+  }
+  text = text
+    .replace(/\[([^\]]*)\]\(([^)]*)\)/g, '$1')
+    .replace(/\*\*|__|`/g, '')
+  if (!text) return
+
+  e.commands.command(({ tr, dispatch }) => {
+    if (dispatch) {
+      // 位置策略：cursor.pos 是「AI 区域写入锚点」，每步结构操作后用
+      // tr.mapping 映射到新坐标（手算块边界开合位置在 split 场景必错）。
+      // assoc=1 表示锚点落在插入/拆分内容的后侧。
+      let target = cursor.pos
+      if (cursor.deleteFrom !== undefined && !cursor.deleted) {
+        tr.delete(cursor.deleteFrom, cursor.deleteTo!)
+        target = tr.mapping.map(cursor.pos, 1)
+        cursor.deleted = true
+      }
+      for (const part of text.split(/(\n\n|\n)/)) {
+        if (part === "\n\n") {
+          tr.split(target)
+          target = tr.mapping.map(cursor.pos, 1)
+        } else if (part === "\n") {
+          const hardBreak = e.schema.nodes.hardBreak?.create()
+          if (hardBreak) {
+            tr.insert(target, hardBreak)
+            target = tr.mapping.map(cursor.pos, 1)
+          }
+        } else if (part) {
+          tr.insertText(part, target)
+          target = tr.mapping.map(cursor.pos, 1)
+        }
+      }
+      cursor.pos = tr.mapping.map(cursor.pos, 1)
+      dispatch(tr)
+    }
+    return true
+  })
+}
+
+/** 通用流式执行：节流 flush + 中断保留已生成内容 + 统一错误提示 */
+async function runAiStream(
+  payload: Parameters<typeof streamAiChat>[0],
+  cursor: AiInsertCursor,
+) {
+  aiRunning.value = true
+  aiAbortController = new AbortController()
+  let buffer = ''
+  let timer: number | null = null
+  const flush = (isFinal: boolean) => {
+    if (timer !== null) {
+      clearTimeout(timer)
+      timer = null
+    }
+    if (buffer) {
+      const chunk = buffer
+      buffer = ''
+      insertAiChunk(cursor, chunk, isFinal)
+    }
+  }
+  try {
+    await streamAiChat(
+      payload,
+      (chunk) => {
+        buffer += chunk
+        // ~60ms 合并一次写入，避免高频事务拖慢编辑器
+        if (timer === null) {
+          timer = window.setTimeout(() => flush(false), 60)
+        }
+      },
+      aiAbortController.signal,
+    )
+    flush(true)
+  } catch (e) {
+    flush(true)
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      ElMessage.info('已取消，已生成内容保留（Ctrl+Z 可回退）')
+    } else {
+      ElMessage.error(e instanceof Error ? e.message : 'AI 生成失败')
+    }
+  } finally {
+    if (timer !== null) clearTimeout(timer)
+    aiRunning.value = false
+    aiAbortController = null
+  }
+}
+
+function cancelAi() {
+  aiAbortController?.abort()
+}
+
+function onGlobalKeydown(e: KeyboardEvent) {
+  if (e.key === 'Escape' && aiRunning.value) cancelAi()
+}
+watch(aiRunning, (running) => {
+  if (running) window.addEventListener('keydown', onGlobalKeydown)
+  else window.removeEventListener('keydown', onGlobalKeydown)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('keydown', onGlobalKeydown)
+  aiAbortController?.abort()
+})
+
+async function runAiPolish() {
+  const e = editor.value
+  if (!e || aiRunning.value) return
+  const { from, to, empty } = e.state.selection
+  if (empty) {
+    ElMessage.warning('请先选中要润色的文字')
+    return
+  }
+  const selected = e.state.doc.textBetween(from, to, '\n')
+  await runAiStream({ task: 'polish', text: selected }, {
+    pos: from,
+    deleteFrom: from,
+    deleteTo: to,
+    deleted: false,
+    carry: '',
+  })
+}
+
+async function runAiContinue() {
+  const e = editor.value
+  if (!e || aiRunning.value) return
+  if (e.isEmpty) {
+    ElMessage.warning("正文为空，没有可续写的上下文，请先写一点内容")
+    return
+  }
+  const pos = e.state.selection.to
+  // 取光标前文做续写上下文（2000 字符足够模型接住语气）
+  const before = e.state.doc.textBetween(Math.max(0, pos - 2000), pos, "\n")
+  await runAiStream({ task: "continue", text: before }, { pos, deleted: true, carry: "" })
+}
+
+async function runAiCustom() {
+  const e = editor.value
+  if (!e || aiRunning.value) return
+  const { from, to, empty } = e.state.selection
+  if (empty) {
+    ElMessage.warning('自定义指令作用于选中文本，请先选中')
+    return
+  }
+  const selected = e.state.doc.textBetween(from, to, '\n')
+  try {
+    const { value } = await ElMessageBox.prompt(
+      '例如：改写成更口语化的表达 / 压缩为一半篇幅 / 列出要点',
+      'AI 自定义指令',
+      {
+        confirmButtonText: '生成',
+        cancelButtonText: '取消',
+        inputPattern: /\S/,
+        inputErrorMessage: '请输入指令',
+      },
+    )
+    await runAiStream(
+      { task: 'custom', text: selected, instruction: value.trim() },
+      { pos: from, deleteFrom: from, deleteTo: to, deleted: false, carry: '' },
+    )
+  } catch {
+    // 用户取消输入框
+  }
+}
+
+function onAiCommand(command: string) {
+  if (command === 'polish') void runAiPolish()
+  else if (command === 'continue') void runAiContinue()
+  else if (command === 'custom') void runAiCustom()
+}
+
+/** 供父组件获取正文纯文本（AI 摘要/标题/标签的上下文来源） */
+function getText(): string {
+  return editor.value?.getText() ?? ''
+}
+
+defineExpose({ getText })
 
 // ---------- 色板/字号预设 ----------
 const TEXT_COLORS = [
@@ -474,7 +685,42 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
         </template>
       </el-dropdown>
 
-      <span v-if="uploading > 0" class="tb-uploading">
+      <!-- AI 助手 -->
+      <el-dropdown trigger="click" :disabled="aiRunning" @command="onAiCommand">
+        <button
+          class="tb-btn tb-wide"
+          :class="{ 'is-on': aiRunning }"
+          title="AI 助手"
+          @click.prevent
+        >
+          <svg viewBox="0 0 24 24"><path d="M12 3l1.9 5.4L19.5 10l-5.6 1.6L12 17l-1.9-5.4L4.5 10l5.6-1.6z" /><path d="M19 15l.9 2.1L22 18l-2.1.9L19 21l-.9-2.1L16 18l2.1-.9z" /></svg>
+          AI
+          <el-icon class="tb-caret"><ArrowDown /></el-icon>
+        </button>
+        <template #dropdown>
+          <el-dropdown-menu>
+            <el-dropdown-item command="polish" :disabled="aiRunning || !state.hasSelection">
+              润色选中文字
+            </el-dropdown-item>
+            <el-dropdown-item command="continue" :disabled="aiRunning">从光标处续写</el-dropdown-item>
+            <el-dropdown-item command="custom" divided :disabled="aiRunning || !state.hasSelection">
+              自定义指令…
+            </el-dropdown-item>
+          </el-dropdown-menu>
+        </template>
+      </el-dropdown>
+
+      <button
+        v-if="aiRunning"
+        class="tb-uploading tb-cancel"
+        type="button"
+        title="取消 AI 生成"
+        @click="cancelAi"
+      >
+        <el-icon class="is-loading"><Loading /></el-icon>
+        AI 生成中… 点击或按 ESC 取消
+      </button>
+      <span v-else-if="uploading > 0" class="tb-uploading">
         <el-icon class="is-loading"><Loading /></el-icon>
         图片上传中…
       </span>
@@ -612,6 +858,13 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
   margin-left: auto;
   font-size: 12px;
   color: var(--color-primary);
+}
+
+.zte-toolbar button.tb-cancel {
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  padding: 0 10px;
+  height: 24px;
 }
 
 /* ---------- 编辑区排版（所见即所得，与前台文章页观感一致） ---------- */

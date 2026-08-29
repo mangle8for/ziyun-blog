@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadUserFile } from 'element-plus'
@@ -9,6 +9,7 @@ import { createArticle, getArticleManageDetail, updateArticle } from '@/api/arti
 import { createCategory, getCategoryList } from '@/api/category'
 import { createTag, getTagList } from '@/api/tag'
 import { uploadFile } from '@/api/file'
+import { streamAiChat } from '@/api/ai'
 import type { ArticlePayload, Category, Tag } from '@/types'
 
 const route = useRoute()
@@ -29,6 +30,138 @@ const loading = ref(false)
 
 const categories = ref<Category[]>([])
 const tags = ref<Tag[]>([])
+
+const editorRef = ref<InstanceType<typeof TiptapEditor>>()
+
+// ---------- AI 写作辅助（摘要/标题/标签；流式任务走 /api/v1/ai/chat/stream） ----------
+
+let metaAbort: AbortController | null = null
+
+/** 通用流式执行：onDelta 逐段回调；返回 false 表示失败或被取消 */
+async function runMetaAi(payload: Parameters<typeof streamAiChat>[0], onDelta: (t: string) => void) {
+  metaAbort = new AbortController()
+  let ok = true
+  try {
+    await streamAiChat(payload, onDelta, metaAbort.signal)
+  } catch (e) {
+    ok = false
+    if (e instanceof DOMException && e.name === 'AbortError') {
+      ElMessage.info('已取消')
+    } else {
+      ElMessage.error(e instanceof Error ? e.message : 'AI 生成失败')
+    }
+  } finally {
+    metaAbort = null
+  }
+  return ok
+}
+
+function cancelMetaAi() {
+  metaAbort?.abort()
+}
+
+onBeforeUnmount(() => metaAbort?.abort())
+
+/** AI 摘要：流式写入摘要框（覆盖旧值，超 500 字截断） */
+const aiSummaryRunning = ref(false)
+
+async function genSummary() {
+  const text = editorRef.value?.getText() ?? ''
+  if (!text.trim()) {
+    ElMessage.warning('请先撰写正文，再生成摘要')
+    return
+  }
+  aiSummaryRunning.value = true
+  summary.value = ''
+  const ok = await runMetaAi({ task: 'summary', text }, (t) => {
+    summary.value = (summary.value + t).slice(0, 500)
+  })
+  aiSummaryRunning.value = false
+  if (ok) ElMessage.success('摘要已生成，可继续手动调整')
+}
+
+// ---------- AI 标题建议 ----------
+const titleDialogVisible = ref(false)
+const titleLoading = ref(false)
+const titleSuggestions = ref<string[]>([])
+
+async function suggestTitles() {
+  const text = editorRef.value?.getText() ?? ''
+  if (!text.trim()) {
+    ElMessage.warning('请先撰写正文，再生成标题建议')
+    return
+  }
+  titleDialogVisible.value = true
+  titleLoading.value = true
+  titleSuggestions.value = []
+  let full = ''
+  const ok = await runMetaAi({ task: 'title', text }, (t) => {
+    full += t
+  })
+  titleLoading.value = false
+  if (!ok) return
+  titleSuggestions.value = full
+    .split('\n')
+    .map((s) => s.replace(/^\d+[.、：:]\s*/, '').trim())
+    .filter(Boolean)
+    .slice(0, 6)
+  if (!titleSuggestions.value.length) {
+    ElMessage.warning('未生成有效标题，请重试')
+    titleDialogVisible.value = false
+  }
+}
+
+function applyTitle(t: string) {
+  title.value = t
+  titleDialogVisible.value = false
+  ElMessage.success('标题已应用')
+}
+
+// ---------- AI 标签推荐 ----------
+const aiTagRunning = ref(false)
+
+async function suggestTags() {
+  const text = editorRef.value?.getText() ?? ''
+  if (!text.trim()) {
+    ElMessage.warning('请先撰写正文，再推荐标签')
+    return
+  }
+  if (!tags.value.length) {
+    ElMessage.warning('暂无候选标签（标签库为空），可手动输入新标签')
+    return
+  }
+  aiTagRunning.value = true
+  let full = ''
+  const ok = await runMetaAi(
+    {
+      task: 'tags',
+      text,
+      context: tags.value.map((t) => t.name).join('、'),
+    },
+    (t) => {
+      full += t
+    },
+  )
+  aiTagRunning.value = false
+  if (!ok) return
+  // 候选名 -> 标签 id；推荐结果逐行解析并去重合并进选中项
+  const nameToId = new Map(tags.value.map((t) => [t.name, t.id]))
+  const recommended = full
+    .split('\n')
+    .map((s) => s.replace(/^[-•*\d.、\s]+/, '').trim())
+    .filter((name) => name && name !== '无')
+  let added = 0
+  for (const name of recommended) {
+    const id = nameToId.get(name)
+    if (!id) continue
+    if (!selectedTags.value.includes(id)) {
+      selectedTags.value.push(id)
+      added++
+    }
+  }
+  if (added) ElMessage.success(`已推荐 ${added} 个标签`)
+  else ElMessage.info('候选标签中没有匹配项')
+}
 
 // ---------- 封面上传 ----------
 const coverFileList = ref<UploadUserFile[]>([])
@@ -163,7 +296,11 @@ onMounted(async () => {
         class="title-input"
         maxlength="200"
         show-word-limit
-      />
+      >
+        <template #append>
+          <el-button :loading="titleLoading" @click="suggestTitles">AI 建议</el-button>
+        </template>
+      </el-input>
       <div class="edit-actions">
         <el-button @click="router.push('/admin/articles')">取消</el-button>
         <el-button :loading="saving" @click="save(0)">存草稿</el-button>
@@ -173,14 +310,24 @@ onMounted(async () => {
 
     <!-- 元信息：摘要/封面/分类/标签 -->
     <div class="meta-panel">
-      <el-input
-        v-model="summary"
-        type="textarea"
-        :rows="2"
-        placeholder="摘要（选填，最多 500 字）"
-        maxlength="500"
-        show-word-limit
-      />
+      <div class="summary-row">
+        <el-input
+          v-model="summary"
+          type="textarea"
+          :rows="2"
+          placeholder="摘要（选填，最多 500 字）"
+          maxlength="500"
+          show-word-limit
+        />
+        <el-button
+          size="small"
+          class="ai-mini-btn"
+          :loading="aiSummaryRunning"
+          @click="genSummary"
+        >
+          AI 摘要
+        </el-button>
+      </div>
 
       <div class="meta-row">
         <!-- 封面 -->
@@ -222,15 +369,48 @@ onMounted(async () => {
           >
             <el-option v-for="t in tags" :key="t.id" :label="t.name" :value="t.id" />
           </el-select>
+          <el-button
+            size="small"
+            class="ai-mini-btn"
+            :loading="aiTagRunning"
+            @click="suggestTags"
+          >
+            AI 推荐
+          </el-button>
         </div>
       </div>
     </div>
 
     <!-- 富文本编辑器（所见即所得）：v-model 为 HTML 正文，图片粘贴/拖拽自动上传 OSS -->
     <TiptapEditor
+      ref="editorRef"
       v-model="content"
       placeholder="开始写作… 支持图片（粘贴/拖拽/工具栏上传）、代码块、表格、高亮、字体颜色与字号"
     />
+
+    <!-- AI 标题建议：流式生成完成后按行展示候选 -->
+    <el-dialog v-model="titleDialogVisible" title="AI 标题建议" width="480px">
+      <div v-loading="titleLoading" class="title-suggestions">
+        <template v-if="titleLoading">
+          <div class="tip-line">AI 正在阅读全文并构思标题…</div>
+        </template>
+        <template v-else>
+          <button
+            v-for="t in titleSuggestions"
+            :key="t"
+            class="title-option"
+            type="button"
+            @click="applyTitle(t)"
+          >
+            {{ t }}
+          </button>
+        </template>
+      </div>
+      <template #footer>
+        <el-button @click="titleDialogVisible = false">关闭</el-button>
+        <el-button type="primary" :disabled="titleLoading" @click="suggestTitles">重新生成</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 新建分类对话框 -->
     <el-dialog v-model="newCategoryDialog" title="新建分类" width="380px">
@@ -273,6 +453,51 @@ onMounted(async () => {
 .edit-actions {
   display: flex;
   gap: 10px;
+}
+
+.summary-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.summary-row .el-textarea {
+  flex: 1;
+}
+
+.ai-mini-btn {
+  color: var(--color-primary);
+}
+
+.title-suggestions {
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.tip-line {
+  color: var(--text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: 30px 0;
+}
+
+.title-option {
+  text-align: left;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-main);
+  font-size: 14px;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+
+.title-option:hover {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
 }
 
 .meta-panel {

@@ -121,6 +121,17 @@ blog:
       # 桶内文件统一放 blog 目录下（OSS 无目录概念，key 前缀模拟，
       # 便于与桶内其他业务隔离、按前缀批量管理）
       base-path: ${OSS_BASE_PATH:blog}
+  # ---------- AI 写作助手 ----------
+  ai:
+    # API Key 落库加密密钥（AES/GCM 派生源）：经环境变量 AI_ENCRYPT_KEY 注入；
+    # 未配置时回退复用 jwt.secret（本地开发零配置）。⚠️ 换密钥后库中已存
+    # 的 Key 将无法解密，需重新录入。
+    encrypt-key: ${AI_ENCRYPT_KEY:}
+    # 上游大模型接口超时（秒）：流式生成耗时以分钟计，读超时要给足
+    connect-timeout-seconds: 10
+    read-timeout-seconds: 180
+    # 发送给模型的正文上下文最大字符数（控制 token 成本，超长截断）
+    max-context-chars: 6000
   security:
     # 认证白名单：完全公开的路径（无需任何登录态）。
     # 注意：/auth/me 与 /auth/logout 需要「已登录」而非公开，

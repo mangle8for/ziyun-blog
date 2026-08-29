@@ -254,3 +254,42 @@ export interface ArticlePinnedPayload {
 
 /** 文件上传返回：后端直接返回可访问 URL 字符串 */
 export type UploadResult = string
+
+// ==================== AI 供应商 / 写作任务 ====================
+
+/** AI 供应商（管理端视图；API Key 永不回显明文，仅掩码） */
+export interface AiProvider {
+  id: string
+  name: string
+  baseUrl: string
+  apiKeyMasked: string
+  models: string[]
+  enabled: 0 | 1
+  isDefault: 0 | 1
+  remark?: string
+  updateTime: string
+}
+
+/** AI 供应商新增/更新载荷；更新时 apiKey 留空 = 保留原值 */
+export interface AiProviderPayload {
+  name: string
+  baseUrl: string
+  apiKey?: string
+  models: string[]
+  enabled?: 0 | 1
+  remark?: string
+}
+
+/** AI 写作任务类型 */
+export type AiTask = 'polish' | 'continue' | 'summary' | 'title' | 'tags' | 'custom'
+
+/** AI 写作任务载荷（POST /api/v1/ai/chat/stream，SSE 流式响应） */
+export interface AiChatPayload {
+  task: AiTask
+  /** 处理对象文本：选中文本 / 光标前文 / 正文纯文本 */
+  text?: string
+  /** 附加上下文：如标签推荐的候选标签列表 */
+  context?: string
+  /** 自定义指令（task=custom 时必填） */
+  instruction?: string
+}
