@@ -308,7 +308,10 @@ onBeforeUnmount(() => {
   align-items: flex-start;
 }
 .tl-cover {
-  flex: 0 0 240px;
+  /* 必须 relative：ProgressiveImage 以 absolute 铺满父容器，
+     缺失时图片会逃逸到卡片层盖住标题与摘要 */
+  position: relative;
+  flex: 0 0 260px;
   border-radius: 10px;
   overflow: hidden;
   aspect-ratio: 16 / 10;

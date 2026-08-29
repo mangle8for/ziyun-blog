@@ -40,7 +40,7 @@ const activePath = computed(() => route.path)
     <!-- 管理区用简洁实底顶栏（写作场景以效率为先，弱化氛围特效） -->
     <header class="admin-nav">
       <div class="nav-left">
-        <span class="brand">✦ 紫云 · 管理后台</span>
+        <span class="brand"><span class="star">✦</span> 紫云 · 管理后台</span>
       </div>
       <div class="nav-right">
           <el-button :icon="ArrowLeft" link @click="router.push('/')">返回博客</el-button>
@@ -100,9 +100,33 @@ const activePath = computed(() => route.path)
 }
 
 .brand {
-  font-weight: 700;
-  letter-spacing: 1px;
+  font-weight: 800;
+  letter-spacing: 2px;
   color: var(--text-main);
+  font-size: 15px;
+}
+
+.brand :deep(.star) {
+  color: var(--color-accent);
+}
+
+.nav-right :deep(.el-button.is-link) {
+  font-size: 13.5px;
+  color: var(--text-secondary);
+  transition: color 0.2s ease;
+}
+
+.nav-right :deep(.el-button.is-link:hover) {
+  color: var(--color-primary);
+}
+
+.icon-btn {
+  transition: border-color 0.2s ease, transform 0.2s ease;
+}
+
+.icon-btn:hover {
+  border-color: color-mix(in srgb, var(--color-primary) 50%, transparent);
+  transform: translateY(-1px);
 }
 
 .nav-right {
@@ -169,11 +193,52 @@ const activePath = computed(() => route.path)
 }
 
 @media (max-width: 768px) {
-  .admin-side {
-    width: 64px;
+  .admin-nav {
+    padding: 0 14px;
   }
-  .side-item span {
+
+  .user-name {
     display: none;
+  }
+
+  /* 侧栏 → 顶部横滚 tab 条：栏目文字可见、拇指可点 */
+  .admin-body {
+    flex-direction: column;
+  }
+
+  .admin-side {
+    flex-direction: row;
+    width: 100%;
+    padding: 10px 12px;
+    gap: 8px;
+    overflow-x: auto;
+    scrollbar-width: none;
+    position: sticky;
+    top: 56px;
+    z-index: 90;
+    background: var(--bg-page);
+  }
+
+  .admin-side::-webkit-scrollbar {
+    display: none;
+  }
+
+  .side-item {
+    white-space: nowrap;
+    padding: 8px 14px;
+    border-radius: 999px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    font-size: 13px;
+  }
+
+  .side-item.active {
+    border-color: var(--color-primary);
+    background: color-mix(in srgb, var(--color-primary) 10%, var(--bg-card));
+  }
+
+  .admin-main {
+    padding: 14px 12px 28px;
   }
 }
 </style>

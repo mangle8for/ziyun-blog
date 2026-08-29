@@ -839,7 +839,7 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
   backdrop-filter: blur(var(--glass-blur));
   border: 1px solid var(--border-color);
   border-radius: 12px;
-  overflow: hidden;
+  /* 不能 overflow:hidden：会破坏工具栏 sticky；圆角由工具栏/编辑区自绘 */
 }
 
 /* ---------- 工具栏 ---------- */
@@ -850,6 +850,12 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
   gap: 2px;
   padding: 8px 10px;
   border-bottom: 1px solid var(--border-color);
+  /* 整页滚动模式：长文写作时工具栏吸附在管理顶栏下方 */
+  position: sticky;
+  top: 56px;
+  z-index: 30;
+  background: var(--bg-card);
+  border-radius: 12px 12px 0 0;
 }
 
 .zte-toolbar .tb-group {
@@ -982,9 +988,8 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
 
 /* ---------- 编辑区排版（所见即所得，与前台文章页观感一致） ---------- */
 .zte-body .tiptap {
-  min-height: 60vh;
-  max-height: 72vh;
-  overflow-y: auto;
+  /* 高度自适应、整页唯一滚动：消除「页面滚动条 + 编辑器内部滚动条」双重滚动 */
+  min-height: 46vh;
   padding: 18px 22px 28px;
   outline: none;
   font-size: 15px;

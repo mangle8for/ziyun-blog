@@ -242,6 +242,10 @@ onBeforeUnmount(() => {
 <style scoped>
 /* 入场：滚入视口后整段淡入上浮 */
 .showcase {
+  /* 与星耀区一致的限宽节奏：不全宽铺满，留呼吸边距 */
+  max-width: 1200px;
+  margin-inline: auto;
+  padding-inline: 24px;
   opacity: 0;
   transform: translateY(26px);
   transition: opacity 0.7s ease, transform 0.7s ease;

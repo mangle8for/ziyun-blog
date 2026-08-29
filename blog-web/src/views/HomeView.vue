@@ -282,7 +282,8 @@ onBeforeUnmount(() => {
    ============================================================ */
 .hero-screen {
   position: relative;
-  min-height: calc(100vh - 60px);
+  /* svh：移动端地址栏收展时以小视口为准，首屏始终恰好满屏 */
+  min-height: calc(100svh - 60px);
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -478,6 +479,15 @@ html.dark .meteor {
   left: 3%;
   right: 3%;
   bottom: 24%;
+}
+/* 桌面端首屏恰好满屏时，24% 会让亮条悬在半空 —— 宽屏下贴到首屏底部
+   （滚动提示按钮上方），移动端首屏被内容撑高保持原节奏 */
+@media (min-width: 900px) {
+  .horizon {
+    bottom: 52px;
+  }
+}
+.horizon {
   height: 2px;
   border-radius: 2px;
   background: linear-gradient(

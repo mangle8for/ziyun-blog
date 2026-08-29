@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Moon, Sunny, User } from '@element-plus/icons-vue'
 
@@ -26,6 +26,20 @@ const activePath = computed(() => route.path)
 /** 移动端导航折叠开关 */
 const mobileMenuOpen = ref(false)
 
+/**
+ * 滚动方向感知导航：页面下滑超过一屏 1/4 时自动隐藏顶栏（阅读沉浸），
+ * 向上滚动或回到顶部时立即显现。
+ */
+const navHidden = ref(false)
+let lastY = 0
+
+function onNavScroll() {
+  const y = window.scrollY
+  navHidden.value = y > 220 && y > lastY + 2
+  if (y < lastY - 2 || y <= 220) navHidden.value = false
+  lastY = y
+}
+
 function go(path: string) {
   mobileMenuOpen.value = false
   router.push(path)
@@ -35,6 +49,15 @@ async function onLogout() {
   await userStore.logout()
   router.push('/')
 }
+
+onMounted(() => {
+  window.addEventListener('scroll', onNavScroll, { passive: true })
+  lastY = window.scrollY
+})
+
+onBeforeUnmount(() => {
+  window.removeEventListener('scroll', onNavScroll)
+})
 </script>
 
 <template>
@@ -42,8 +65,8 @@ async function onLogout() {
     <!-- 星空粒子背景层（暗色主题可见） -->
     <StarfieldBackground />
 
-    <!-- 顶部导航：毛玻璃吸顶 -->
-    <header class="nav-bar">
+    <!-- 顶部导航：毛玻璃吸顶 + 下滑隐藏/上滑显现 -->
+    <header class="nav-bar" :class="{ 'nav-hidden': navHidden }">
       <div class="nav-inner">
         <div class="brand" @click="go('/')">
           <span class="brand-icon">✦</span>
@@ -158,6 +181,8 @@ async function onLogout() {
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
   border-bottom: 1px solid var(--border-color);
+  /* 下滑隐藏 / 上滑显现的位移动画 */
+  transition: transform 0.32s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 .nav-inner {
@@ -191,6 +216,10 @@ async function onLogout() {
   color: var(--text-main);
 }
 
+.nav-bar.nav-hidden {
+  transform: translateY(-100%);
+}
+
 .nav-links {
   display: flex;
   gap: 8px;
@@ -199,22 +228,46 @@ async function onLogout() {
 }
 
 .nav-link {
-  padding: 8px 16px;
-  border-radius: 999px;
+  position: relative;
+  padding: 8px 14px;
   color: var(--text-secondary);
-  font-size: 15px;
-  transition: all 0.25s ease;
+  font-size: 14.5px;
+  font-weight: 500;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: color 0.25s ease;
+}
+
+/* 悬停/激活：底部下划线从中心展开，替代旧的底色胶囊 */
+.nav-link::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 2px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--color-primary);
+  transform: scaleX(0);
+  transform-origin: center;
+  transition: transform 0.28s cubic-bezier(0.2, 0.7, 0.3, 1);
 }
 
 .nav-link:hover {
   color: var(--text-main);
-  background: var(--bg-card);
+}
+
+.nav-link:hover::after {
+  transform: scaleX(0.55);
 }
 
 .nav-link.active {
   color: var(--color-primary);
-  background: var(--bg-card);
-  font-weight: 600;
+  font-weight: 700;
+}
+
+.nav-link.active::after {
+  transform: scaleX(1);
 }
 
 .nav-actions {
