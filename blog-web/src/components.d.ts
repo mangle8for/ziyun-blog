@@ -12,6 +12,7 @@ export {}
 declare module 'vue' {
   export interface GlobalComponents {
     ArticleRowSkeleton: typeof import('./components/ArticleRowSkeleton.vue')['default']
+    DesignShowcase: typeof import('./components/DesignShowcase.vue')['default']
     ElAvatar: typeof import('element-plus/es')['ElAvatar']
     ElButton: typeof import('element-plus/es')['ElButton']
     ElCheckbox: typeof import('element-plus/es')['ElCheckbox']

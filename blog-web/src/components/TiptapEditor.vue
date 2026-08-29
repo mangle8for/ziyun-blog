@@ -492,7 +492,7 @@ async function runAiPolish() {
   )
 }
 
-async function runAiContinue() {
+async function runAiContinue(instruction?: string) {
   const e = editor.value
   if (!e || aiRunning.value) return
   if (e.isEmpty) {
@@ -503,10 +503,29 @@ async function runAiContinue() {
   // 取光标前文做续写上下文（2000 字符足够模型接住语气）
   const before = e.state.doc.textBetween(Math.max(0, pos - 2000), pos, "\n")
   await runAiStream(
-    { task: "continue", text: before },
+    { task: "continue", text: before, instruction: instruction || undefined },
     { pos, deleted: true, carry: "" },
     { dedupTailOf: before, startPos: pos },
   )
+}
+
+/** 续写自定义指令：弹窗收集后走续写链路 */
+async function promptContinueInstruction() {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      "描述你想要的续写风格或要求，如：以问答体展开 / 站在初学者视角解释 / 结合实际部署经验谈",
+      "续写 · 自定义指令",
+      {
+        confirmButtonText: "生成",
+        cancelButtonText: "取消",
+        inputPattern: /\S/,
+        inputErrorMessage: "请输入指令",
+      },
+    )
+    await runAiContinue(value.trim())
+  } catch {
+    // 用户取消输入框
+  }
 }
 
 async function runAiCustom() {
@@ -541,7 +560,17 @@ async function runAiCustom() {
 function onAiCommand(command: string) {
   if (command === 'polish') void runAiPolish()
   else if (command === 'continue') void runAiContinue()
+  else if (command === 'continue-custom') void promptContinueInstruction()
+  else if (command.startsWith('continue-')) void runAiContinue(CONTINUE_STYLES[command])
   else if (command === 'custom') void runAiCustom()
+}
+
+/** 续写风格预设：值作为「写作风格与要求」注入续写系统提示词 */
+const CONTINUE_STYLES: Record<string, string> = {
+  'continue-tech': '偏技术向：深入展开实现细节与原理，用词准确专业，可举一反三',
+  'continue-casual': '偏轻松口语：像和朋友聊天一样自然表达，节奏轻快，可带一点幽默',
+  'continue-concise': '简洁精炼：短句为主，信息密度高，删掉一切不必要的修饰',
+  'continue-literary': '偏文学优美：有画面感与意象，文字讲究节奏和韵律',
 }
 
 /** 供父组件获取正文纯文本（AI 摘要/标题/标签的上下文来源） */
@@ -765,9 +794,16 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
             <el-dropdown-item command="polish" :disabled="aiRunning || !state.hasSelection">
               润色选中文字
             </el-dropdown-item>
-            <el-dropdown-item command="continue" :disabled="aiRunning">从光标处续写</el-dropdown-item>
+            <el-dropdown-item command="continue" divided :disabled="aiRunning">
+              续写 · 默认风格
+            </el-dropdown-item>
+            <el-dropdown-item command="continue-tech" :disabled="aiRunning">续写 · 技术深入</el-dropdown-item>
+            <el-dropdown-item command="continue-casual" :disabled="aiRunning">续写 · 轻松口语</el-dropdown-item>
+            <el-dropdown-item command="continue-concise" :disabled="aiRunning">续写 · 简洁精炼</el-dropdown-item>
+            <el-dropdown-item command="continue-literary" :disabled="aiRunning">续写 · 文学优美</el-dropdown-item>
+            <el-dropdown-item command="continue-custom" :disabled="aiRunning">续写 · 自定义指令…</el-dropdown-item>
             <el-dropdown-item command="custom" divided :disabled="aiRunning || !state.hasSelection">
-              自定义指令…
+              自定义指令（改写选区）…
             </el-dropdown-item>
           </el-dropdown-menu>
         </template>
@@ -924,17 +960,24 @@ const FONT_SIZES = ['13px', '15px', '17px', '20px', '24px', '30px']
 }
 
 .zte-toolbar button.tb-cancel {
-  border: 1px solid var(--border-color);
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--color-primary) 45%, transparent);
   border-radius: 999px;
-  padding: 0 10px;
-  height: 24px;
-  /* 按钮默认底色在暗色主题下与紫色文字对比不足，显式使用主题变量 */
-  background: var(--bg-page);
-  color: var(--color-primary);
+  padding: 0 12px;
+  height: 26px;
+  /* 主题色玻璃胶囊：暗色=星云紫描边、亮色=森林绿描边，双主题自动契合 */
+  background: color-mix(in srgb, var(--color-primary) 14%, var(--bg-card)) !important;
+  color: var(--text-main) !important;
+  font-size: 12px;
 }
 
 .zte-toolbar button.tb-cancel:hover {
+  background: color-mix(in srgb, var(--color-primary) 24%, var(--bg-card)) !important;
   border-color: var(--color-primary);
+}
+
+.zte-toolbar button.tb-cancel .el-icon {
+  color: var(--color-primary);
 }
 
 /* ---------- 编辑区排版（所见即所得，与前台文章页观感一致） ---------- */

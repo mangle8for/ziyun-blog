@@ -240,11 +240,15 @@ public class AiChatServiceImpl implements AiChatService {
                             + "（如 **加粗**、`代码`、[链接](url)）不变，提升流畅度与表达力；"
                             + "不要扩写、缩写、增删段落，不要输出任何解释或前后缀，只输出润色后的文本。",
                     text, 8192, 0.5);
-            case "continue" -> new TaskSpec(
-                    "你是博客文章的续写助手。基于用户给出的正文片段自然续写：延续原文语气、主题与 Markdown 格式。"
-                            + "铁律：绝对不能重复、复述或换一种说法重写用户给出的任何已有文字（包括最后一句），"
-                            + "输出的第一个字就必须是全新的内容；不要添加标题、说明、道歉或总结性套话。",
-                    text, 8192, 0.7);
+            case "continue" -> {
+                String sys = "你是博客文章的续写助手。基于用户给出的正文片段自然续写：延续原文语气、主题与 Markdown 格式。"
+                        + "铁律：绝对不能重复、复述或换一种说法重写用户给出的任何已有文字（包括最后一句），"
+                        + "输出的第一个字就必须是全新的内容；不要添加标题、说明、道歉或总结性套话。";
+                if (dto.getInstruction() != null && !dto.getInstruction().isBlank()) {
+                    sys += "\n写作风格与要求：" + dto.getInstruction().trim();
+                }
+                yield new TaskSpec(sys, text, 8192, 0.7);
+            }
             case "summary" -> new TaskSpec(
                     "为用户的博客文章撰写中文摘要：100 字以内，概括核心内容与结论，客观陈述；"
                             + "直接输出摘要文本，不要「摘要：」之类的前缀，不要分点。",
