@@ -32,12 +32,36 @@ const mobileMenuOpen = ref(false)
  */
 const navHidden = ref(false)
 let lastY = 0
+/** 方向累积器：同向滚动量累加、越过阈值才切换状态，
+ *  吞掉滚动途中的微抖动（图片懒加载位移/平滑滚动中间帧），
+ *  否则下滑途中 -2px 的回弹就会让导航反复弹出来。 */
+let accum = 0
 
 function onNavScroll() {
   const y = window.scrollY
-  navHidden.value = y > 220 && y > lastY + 2
-  if (y < lastY - 2 || y <= 220) navHidden.value = false
+  const delta = y - lastY
   lastY = y
+
+  if (y <= 220) {
+    navHidden.value = false
+    accum = 0
+    return
+  }
+  if (delta === 0) return
+
+  if (delta > 0) {
+    accum = accum > 0 ? accum + delta : delta
+  } else {
+    accum = accum < 0 ? accum + delta : delta
+  }
+
+  if (accum > 28) {
+    navHidden.value = true
+    accum = 0
+  } else if (accum < -18) {
+    navHidden.value = false
+    accum = 0
+  }
 }
 
 function go(path: string) {
