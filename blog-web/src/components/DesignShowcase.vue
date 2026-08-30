@@ -329,7 +329,8 @@ onBeforeUnmount(() => {
   transition: opacity 0.45s ease, transform 0.45s ease;
 }
 .sc-block:first-child {
-  padding-top: 12vh;
+  /* 紧跟主标题下方：进入栏目时能力块 1 与右侧居中面板对齐 */
+  padding-top: 24px;
 }
 .sc-block:last-child {
   padding-bottom: 45vh; /* 最后一块也能滚到中央探测带 */
