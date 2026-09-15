@@ -60,10 +60,8 @@ services:
       REDIS_PORT: 6379
       # 生产密钥（缺失时应用直接启动失败，防止弱配置上线）
       JWT_SECRET: ${JWT_SECRET}
-      # 对象存储：生产必须注入独立凭据（RAM 子账号最小权限）。
-      # ${VAR:?} 语法 = 变量缺失时 compose 直接报错退出 —— 防止
-      # 历史「默认复用开发凭据」的漏洞再次出现（旧 AK/SK 已随公开
-      # 仓库泄露，务必已在阿里云控制台轮换并更新 GitHub Secrets）。
+      # 对象存储：凭据由 GitHub Secrets 部署时注入服务器 .env（RAM 子账号最小权限）
+      # ${VAR:?} 语法 = 变量缺失时 compose 直接报错退出，防止弱配置上线
       STORAGE_TYPE: ${STORAGE_TYPE:-oss}
       OSS_ENDPOINT: ${OSS_ENDPOINT:-https://oss-cn-beijing.aliyuncs.com}
       OSS_ACCESS_KEY_ID: ${OSS_ACCESS_KEY_ID:?缺少 OSS_ACCESS_KEY_ID}
