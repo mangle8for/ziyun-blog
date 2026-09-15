@@ -329,8 +329,11 @@ onBeforeUnmount(() => {
   transition: opacity 0.45s ease, transform 0.45s ease;
 }
 .sc-block:first-child {
-  /* 紧跟主标题下方：进入栏目时能力块 1 与右侧居中面板对齐 */
-  padding-top: 24px;
+  /* 与主标题拉开约半屏间距：栏目吸附（sc-layout 顶到视口顶）时，
+   * 首块标题正好落在视口中央探测带（42%~58%）内，与右侧 sticky
+   * 面板（100vh 垂直居中）同轴对齐。此前 24px 间距导致进入栏目时
+   * 首项贴着标题滚动、与居中的面板明显错位 */
+  padding-top: calc(50vh - 13px);
 }
 .sc-block:last-child {
   padding-bottom: 45vh; /* 最后一块也能滚到中央探测带 */
@@ -743,8 +746,23 @@ onBeforeUnmount(() => {
     top: 60px;
     height: auto;
     padding: 6px 16px 26px;
-    /* 向下渐隐的底色：滚动文字从面板下方淡出，避免生硬重叠 */
-    background: linear-gradient(to bottom, var(--bg-page) 78%, transparent);
+    /* 实色底：左侧文字滚动到面板下缘即被完全遮住，杜绝透出重叠
+     * （此前 78% 渐变尾部透明，滚过的标题/正文会在淡出区透出来）；
+     * 与页面同底色所以边界不可见。z-index 保证压在有 transform
+     * （active 位移）的能力块之上 */
+    background: var(--bg-page);
+    z-index: 5;
+  }
+  /* 面板下缘渐隐带：滚动文字先在此淡出、再被实色面板遮住，衔接柔和 */
+  .sc-panel::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    height: 64px;
+    background: linear-gradient(to bottom, var(--bg-page), transparent);
+    pointer-events: none;
   }
   .sc-visual-wrap {
     padding: 14px;

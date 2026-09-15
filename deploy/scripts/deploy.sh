@@ -89,8 +89,8 @@ docker compose up -d --force-recreate nginx
 # 说明：只以 /api 链路（nginx 反代 -> backend -> MySQL）为成功标准；
 # 前端静态文件 403/404 属于 dist 权限/时序问题，不阻断本次部署（回滚无意义）。
 #
-# HTTPS 全站启用后，80 端口只做 ACME 验证 + 301 跳转（见 blog.conf），
-# 走 http 永远拿到 301，健康检查必须打到 443。
+# 80/443 双栈均直接提供全量服务（HTTP 为无备案/证书异常时的兜底通道，
+# 见 blog.conf），健康检查仍以 443 的完整 HTTPS 链路为准。
 # --resolve 强制本机建连（不绕公网），SNI 与证书校验仍按真实域名进行。
 echo "[deploy] 健康检查 https://${DOMAIN}/api/v1/categories（最多 180s）"
 DEPLOY_OK=0

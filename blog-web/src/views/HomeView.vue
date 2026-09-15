@@ -680,10 +680,12 @@ html.dark .horizon-pulse {
   animation: hero-in 0.7s ease backwards;
 }
 
-/* 星耀网格：首篇横向大卡铺满整行，其余自适应并排 */
+/* 星耀网格：首篇横向大卡铺满整行，其余自适应并排。
+ * min() 兜底：视口过窄（<312px 内容宽）时列宽收缩到 100%，
+ * 避免 280px 下限把网格撑出横向溢出 */
 .pinned-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 16px;
 }
 
